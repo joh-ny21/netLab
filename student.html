@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Student — Network Simulator</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="app-container">
+  <div class="app-header">
+    <div class="app-header-left">
+      <h1>🎓 NETWORK SIMULATOR</h1>
+      <div class="subhead">CRIMPING · TOPOLOGY · ASSESSMENT</div>
+    </div>
+    <div class="app-header-right">
+      <div class="user-badge">
+        <span class="user-icon">👨‍🎓</span>
+        <div class="user-info">
+          <span class="user-name" id="userName">Student</span>
+          <span class="user-role">Student</span>
+        </div>
+      </div>
+      <button class="logout-btn" id="logoutBtn" type="button">Logout</button>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab-btn active" id="tabCrimpBtn" data-tab="crimp" type="button">📋 Crimping Practice</button>
+    <button class="tab-btn" id="tabAssessBtn" data-tab="assess" type="button">📝 Assessment Exam</button>
+    <button class="tab-btn" id="tabTopoBtn" data-tab="topo" type="button">🌐 Network Lab</button>
+  </div>
+
+  <!-- CRIMPING PRACTICE -->
+  <div class="tab-content active" id="crimpTab">
+    <div class="dashboard">
+      <div class="stat-card"><div class="stat-value" id="statAttempts">0</div><div class="stat-label">Attempts</div></div>
+      <div class="stat-card pass"><div class="stat-value" id="statPassed">0</div><div class="stat-label">Passed</div></div>
+      <div class="stat-card fail"><div class="stat-value" id="statFailed">0</div><div class="stat-label">Failed</div></div>
+      <div class="stat-card"><div class="stat-value" id="statAvgScore">—</div><div class="stat-label">Avg Score</div></div>
+    </div>
+
+    <div class="progress-steps">
+      <div class="step active" id="stepWiring"><span class="step-num">1</span> Wire Placement</div>
+      <div class="step" id="stepCrimp"><span class="step-num">2</span> Crimp</div>
+      <div class="step" id="stepVerify"><span class="step-num">3</span> Verify</div>
+    </div>
+
+    <div class="main-panel">
+      <div class="rj45-wrapper">
+        <div class="rj45-title" id="rj45Title">RJ45 CONNECTOR — T568B STRAIGHT-THROUGH</div>
+        <div class="rj45-body">
+          <div class="connector-plastic">
+            <div class="crimp-tab"></div>
+            <div class="pin-container" id="pinContainer"></div>
+            <div class="wire-slot" id="wireSlotContainer"></div>
+          </div>
+          <div class="wire-palette" id="wirePalette"></div>
+        </div>
+      </div>
+
+      <div class="control-panel">
+        <div class="cable-type-selector">
+          <button class="cable-btn active" id="cableStraight" data-cable="straight" type="button">⚡ Straight-Through</button>
+          <button class="cable-btn" id="cableCrossover" data-cable="crossover" type="button">🔄 Crossover</button>
+        </div>
+
+        <div class="task-banner" id="taskBanner">
+          <strong>TASK:</strong> Terminate a <strong>Straight-Through</strong> cable using <strong>T568B</strong> on both ends.
+        </div>
+
+        <div class="status-area" id="statusMessage">🧵 Step 1: Place all 8 wires in the correct order.</div>
+
+        <div class="button-group">
+          <button class="btn btn-reset" id="resetBtn" type="button">⟲ RESET</button>
+          <button class="btn btn-randomize" id="randomizeBtn" type="button">🎲 RANDOMIZE</button>
+          <button class="btn btn-crimp" id="crimpBtn" type="button">🔨 CRIMP</button>
+          <button class="btn btn-verify" id="verifyBtn" type="button">✔ CHECK CABLE</button>
+        </div>
+
+        <div class="feedback" id="feedbackMsg">Pick a wire color, then click a slot.</div>
+
+        <div class="result-output">
+          <div class="result-output-title">CABLE TEST RESULT</div>
+          <div class="result-output-body" id="resultOutputBody">
+            <span class="result-placeholder">Awaiting crimp & test...</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ASSESSMENT EXAM -->
+  <div class="tab-content" id="assessTab">
+    <div class="exam-container" id="examLockedScreen">
+      <div class="exam-card">
+        <div class="exam-icon">🔒</div>
+        <h2>EXAM NOT AVAILABLE</h2>
+        <p class="exam-desc">The assessment exam has not been opened by your instructor yet.</p>
+        <button class="exam-refresh-btn" id="examRefreshBtn" type="button">🔄 Check Availability</button>
+      </div>
+    </div>
+
+    <div class="exam-container" id="examReadyScreen" style="display:none;">
+      <div class="exam-card">
+        <div class="exam-icon">📝</div>
+        <h2>NETWORK CERTIFICATION EXAM</h2>
+        <p class="exam-desc">This timed assessment is configured by your instructor.</p>
+
+        <div class="exam-config-display">
+          <div class="exam-config-item"><div class="ec-label">Time Limit</div><div class="ec-value" id="examConfigTime">15:00</div></div>
+          <div class="exam-config-item"><div class="ec-label">Tasks</div><div class="ec-value" id="examConfigTasks">0</div></div>
+          <div class="exam-config-item"><div class="ec-label">Pass Threshold</div><div class="ec-value" id="examConfigPass">70%</div></div>
+          <div class="exam-config-item"><div class="ec-label">Max Violations</div><div class="ec-value" id="examConfigViolations">3</div></div>
+        </div>
+
+        <div class="exam-rules">
+          <h3>⚠️ EXAM RULES</h3>
+          <ul>
+            <li><strong>Do NOT switch tabs, windows, or applications.</strong></li>
+            <li>After <strong id="rulesMaxViolations">3</strong> violations, your exam is auto-submitted.</li>
+            <li>Full-screen mode will be requested.</li>
+            <li>There are <strong id="rulesTasks">0</strong> tasks. Complete them in order.</li>
+            <li>You need <strong id="rulesPass">70%</strong> or higher to pass.</li>
+          </ul>
+        </div>
+
+        <div class="exam-form">
+          <div class="pt-form-row"><label>Confirm Full Name</label><input type="text" id="confirmName" placeholder="Enter your full name"></div>
+          <div class="pt-form-row"><label>Confirm Student ID</label><input type="text" id="confirmId" placeholder="Enter your ID number"></div>
+        </div>
+
+        <button class="exam-start-btn" id="examStartBtn" type="button">🚀 BEGIN EXAM</button>
+        <div class="exam-warning" id="examWarning"></div>
+      </div>
+    </div>
+
+    <div class="exam-active" id="examActiveScreen" style="display:none;">
+      <div class="violation-banner" id="violationBanner">
+        <span class="violation-icon">⚠️</span>
+        <span id="violationText">Tab switch detected!</span>
+      </div>
+
+      <div class="exam-header">
+        <div class="exam-header-left">
+          <div class="exam-student-info">
+            <span class="exam-student-name" id="examStudentName">Student</span>
+            <span class="exam-student-id" id="examStudentId">ID</span>
+          </div>
+        </div>
+        <div class="exam-header-center">
+          <div class="exam-progress-text">Task <span id="examCurrentChallenge">1</span> of <span id="examTotalChallenges">0</span></div>
+          <div class="exam-progress-bar"><div class="exam-progress-fill" id="examProgressFill"></div></div>
+        </div>
+        <div class="exam-header-right">
+          <div class="exam-timer" id="examTimer">15:00</div>
+          <div class="exam-violations" id="examViolations">0 / 3 violations</div>
+        </div>
+      </div>
+
+      <div class="exam-content">
+        <div class="exam-task-card">
+          <div class="exam-task-label">TASK</div>
+          <div class="exam-task-desc" id="examTaskDesc">Task description</div>
+        </div>
+
+        <div class="exam-main">
+          <div class="exam-rj45-wrapper" id="examCrimpUI" style="display:none;">
+            <div class="rj45-body">
+              <div class="connector-plastic">
+                <div class="crimp-tab"></div>
+                <div class="pin-container" id="examPinContainer"></div>
+                <div class="wire-slot" id="examWireSlotContainer"></div>
+              </div>
+              <div class="wire-palette" id="examWirePalette"></div>
+            </div>
+          </div>
+
+          <div class="exam-lab-wrapper" id="examLabUI" style="display:none;">
+            <canvas id="examTopoCanvas" width="700" height="380"></canvas>
+            <div class="exam-lab-toolbar" id="examLabDeviceBar"></div>
+            <div class="exam-lab-tools">
+              <button class="tool-btn active" data-exam-tool="connect" type="button">🔗 Connect</button>
+              <button class="tool-btn" data-exam-tool="select" type="button">🖱️ Select</button>
+              <button class="tool-btn" data-exam-tool="delete" type="button">🗑️ Delete</button>
+              <button class="tool-btn" id="examLabClear" type="button">⟲ Clear</button>
+            </div>
+          </div>
+
+          <div class="exam-subnet-wrapper" id="examSubnetUI" style="display:none;">
+            <div class="exam-subnet-panel">
+              <div class="exam-subnet-header">Subnet Calculation</div>
+              <div class="exam-subnet-given"><div id="examSubnetGiven">IP: 192.168.1.0 / 24</div></div>
+              <div class="exam-subnet-field"><label>Network Address</label><input type="text" id="examSubnetNetwork" placeholder="e.g. 192.168.1.0"></div>
+              <div class="exam-subnet-field"><label>Broadcast Address</label><input type="text" id="examSubnetBroadcast" placeholder="e.g. 192.168.1.255"></div>
+              <div class="exam-subnet-field"><label>Subnet Mask</label><input type="text" id="examSubnetMask" placeholder="e.g. 255.255.255.0"></div>
+              <div class="exam-subnet-field">
+                <label>Usable Host Range</label>
+                <div style="display:flex; gap:6px;">
+                  <input type="text" id="examSubnetFirst" placeholder="192.168.1.1">
+                  <input type="text" id="examSubnetLast" placeholder="192.168.1.254">
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="exam-firewall-panel" id="examFirewallUI" style="display:none;">
+            <label>Firewall Rule</label>
+            <select id="examFwRule">
+              <option value="">— Select —</option>
+              <option value="allow-http">Allow HTTP Only</option>
+              <option value="allow-https">Allow HTTPS Only</option>
+              <option value="allow-ssh">Allow SSH Only</option>
+              <option value="deny-all">Deny All</option>
+              <option value="allow-all">Allow All</option>
+            </select>
+          </div>
+
+          <div class="exam-ping-panel" id="examPingUI" style="display:none;">
+            <div class="exam-ping-target" id="examPingTarget">Target: 8.8.8.8</div>
+            <button class="pt-btn green" id="examPingRunBtn" type="button">📶 Run Ping Test</button>
+            <div class="pt-result" id="examPingOutput">Build the topology, then click Run Ping.</div>
+          </div>
+
+          <div class="exam-lb-panel" id="examLBUI" style="display:none;">
+            <label>Algorithm</label>
+            <select id="examLBRule">
+              <option value="">— Select —</option>
+              <option value="round-robin">Round Robin</option>
+              <option value="least-connections">Least Connections</option>
+              <option value="weighted">Weighted</option>
+            </select>
+            <button class="pt-btn green" id="examLBRunBtn" type="button" style="margin-top:8px;">▶️ Simulate Traffic</button>
+            <div class="pt-result" id="examLBOutput">Configure topology and algorithm, then simulate.</div>
+          </div>
+
+          <div class="exam-sidepanel">
+            <div class="exam-status-area" id="examStatusMsg">Complete the task, then click SUBMIT.</div>
+            <div class="exam-button-group">
+              <button class="btn btn-verify" id="examSubmitBtn" type="button">✔ SUBMIT TASK</button>
+            </div>
+            <div class="exam-feedback" id="examFeedback">Read the task instructions above.</div>
+            <div class="exam-result-mini">
+              <div class="exam-result-mini-title">LAST TASK</div>
+              <div class="exam-result-mini-body" id="examResultMiniBody">No submission yet.</div>
+            </div>
+            <div class="exam-score-summary">
+              <div class="exam-score-row"><span>Score:</span><strong id="examScoreDisplay">0%</strong></div>
+              <div class="exam-score-row"><span>Points:</span><strong id="examPointsDisplay">0 / 0</strong></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="exam-results-screen" id="examResultsScreen" style="display:none;">
+      <div class="exam-card exam-result-card">
+        <div class="exam-icon" id="examResultIcon">🏆</div>
+        <h2 id="examResultTitle">EXAM COMPLETE</h2>
+        <div class="exam-result-sub" id="examResultSub">Performance summary.</div>
+
+        <div class="result-grid">
+          <div class="result-item"><div class="ri-label">Final Score</div><div class="ri-value" id="finalScore">0%</div></div>
+          <div class="result-item"><div class="ri-label">Points</div><div class="ri-value" id="finalCorrect">0/0</div></div>
+          <div class="result-item"><div class="ri-label">Grade</div><div class="ri-value" id="finalGrade">F</div></div>
+          <div class="result-item"><div class="ri-label">Violations</div><div class="ri-value" id="finalViolations">0</div></div>
+        </div>
+
+        <div class="exam-result-details" id="examResultDetails"></div>
+        <div class="pt-result" id="sheetSyncStatus" style="margin:1rem 0;"></div>
+
+        <div class="modal-actions">
+          <button class="btn btn-reset" id="examExitBtn" type="button">Exit Exam</button>
+          <button class="btn btn-next" id="examRetakeBtn" type="button">🔑 Retake Exam</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- RETAKE MODAL -->
+    <div class="retake-modal-overlay" id="retakeModal" style="display:none;">
+      <div class="retake-modal">
+        <div class="retake-icon">🔑</div>
+        <h2>RETAKE REQUIRES TOKEN</h2>
+        <p class="retake-desc">
+          To retake the exam, you need a token from your instructor.
+          Please ask your instructor for the token and enter it below.
+        </p>
+        <div class="pt-form-row" style="text-align:left;">
+          <label>Enter Retake Token</label>
+          <input type="text" id="retakeTokenInput"
+            placeholder="XXXX-XXXX-XXXX"
+            style="font-family:monospace; letter-spacing:2px; text-transform:uppercase; text-align:center; font-size:1.1rem; padding:14px;"
+            maxlength="14">
+        </div>
+        <div class="retake-error" id="retakeError"></div>
+        <div class="modal-actions" style="margin-top:1rem;">
+          <button class="btn btn-reset" id="retakeCancelBtn" type="button">Cancel</button>
+          <button class="btn btn-verify" id="retakeConfirmBtn" type="button">🔓 Unlock Retake</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- NETWORK LAB (Practice) -->
+  <div class="tab-content" id="topoTab">
+    <div class="pt-layout">
+      <div class="pt-sidebar">
+        <div class="pt-sidebar-section">
+          <div class="pt-sidebar-title">Devices</div>
+          <div class="pt-device-btn selected" data-type="pc"><span class="icon">💻</span> PC</div>
+          <div class="pt-device-btn" data-type="server"><span class="icon">🖥️</span> Server</div>
+          <div class="pt-device-btn" data-type="switch"><span class="icon">🔀</span> Switch</div>
+          <div class="pt-device-btn" data-type="router"><span class="icon">📡</span> Router</div>
+          <div class="pt-device-btn" data-type="firewall"><span class="icon">🛡️</span> Firewall</div>
+          <div class="pt-device-btn" data-type="lb"><span class="icon">⚖️</span> Load Balancer</div>
+          <div class="pt-device-btn" data-type="internet"><span class="icon">🌍</span> Internet</div>
+        </div>
+        <div class="pt-sidebar-section">
+          <div class="pt-sidebar-title">Tools</div>
+          <div class="pt-device-btn" id="toolSelect"><span class="icon">🖱️</span> Select</div>
+          <div class="pt-device-btn selected" id="toolConnect"><span class="icon">🔗</span> Connect</div>
+          <div class="pt-device-btn" id="toolDelete"><span class="icon">🗑️</span> Delete</div>
+          <div class="pt-device-btn" id="toolCancel"><span class="icon">✖</span> Cancel</div>
+        </div>
+        <div class="pt-sidebar-section">
+          <div class="pt-sidebar-title">Topology</div>
+          <div class="topo-type-badge" id="topoTypeBadge">
+            <span class="topo-type-icon" id="topoTypeIcon">❓</span>
+            <div>
+              <div class="topo-type-label">Detected</div>
+              <div class="topo-type-name" id="topoTypeName">None</div>
+              <div class="topo-type-desc" id="topoTypeDesc">Place devices</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="pt-main">
+        <div class="pt-canvas-wrapper">
+          <canvas id="topoCanvas" width="900" height="500"></canvas>
+          <div class="connection-hint" id="connectionHint">💡 Click device → then click another to connect</div>
+        </div>
+        <div class="pt-toolbar">
+          <button class="tool-btn" id="btnClearTopo" type="button">🗑️ Clear All</button>
+          <button class="tool-btn" id="btnShowConfigs" type="button">📋 Device Configs</button>
+        </div>
+      </div>
+      <div class="pt-rightpanel">
+        <div class="pt-card">
+          <div class="pt-card-title">🌍 Internet Connectivity</div>
+          <div class="pt-form-row">
+            <label>Ping Target</label>
+            <select id="pingTarget">
+              <option value="8.8.8.8">8.8.8.8 (Google DNS)</option>
+              <option value="1.1.1.1">1.1.1.1 (Cloudflare)</option>
+              <option value="192.168.1.1">192.168.1.1 (Gateway)</option>
+            </select>
+          </div>
+          <button class="pt-btn green" id="btnPingRun" type="button">📶 Run Ping Test</button>
+          <div class="pt-result" id="pingResult">Place an Internet device and connect it to a Router.</div>
+        </div>
+        <div class="pt-card">
+          <div class="pt-card-title">⚖️ Load Balancer</div>
+          <div class="pt-form-row">
+            <label>Algorithm</label>
+            <select id="lbAlgorithm">
+              <option value="round-robin">Round Robin</option>
+              <option value="least-connections">Least Connections</option>
+              <option value="weighted">Weighted</option>
+            </select>
+          </div>
+          <div class="pt-form-row"><label>Total Requests</label><input type="number" id="lbRequests" value="1000" min="1"></div>
+          <button class="pt-btn green" id="btnRunLB" type="button">▶️ Simulate Traffic</button>
+          <div class="pt-result" id="lbResult">Add Load Balancer and Servers.</div>
+          <div class="lb-stats" id="lbStats"></div>
+        </div>
+        <div class="pt-card">
+          <div class="pt-card-title">🛡️ Security Center</div>
+          <div class="pt-form-row">
+            <label>Firewall Rule</label>
+            <select id="fwRule">
+              <option value="allow-all">Allow All</option>
+              <option value="deny-all">Deny All</option>
+              <option value="allow-http">Allow HTTP</option>
+              <option value="allow-https">Allow HTTPS</option>
+              <option value="allow-ssh">Allow SSH</option>
+            </select>
+          </div>
+          <button class="pt-btn red" id="btnApplyFw" type="button">🔒 Apply Firewall Rule</button>
+          <button class="pt-btn blue" id="btnScan" type="button" style="margin-top:6px;">🔍 Security Scan</button>
+          <div class="pt-result" id="securityResult">Security status: no firewall.</div>
+          <div class="security-log" id="securityLog">
+            <div class="log-entry info"><span class="log-time">--:--:--</span> Ready.</div>
+          </div>
+        </div>
+        <div class="pt-card">
+          <div class="pt-card-title">🧮 Subnet Calculator</div>
+          <div class="pt-form-row"><label>IP Address</label><input type="text" id="ipInput" value="192.168.1.10"></div>
+          <div class="pt-form-row">
+            <label>CIDR</label>
+            <select id="cidrSelect">
+              <option value="24" selected>/24</option>
+              <option value="25">/25</option>
+              <option value="26">/26</option>
+              <option value="27">/27</option>
+              <option value="28">/28</option>
+              <option value="30">/30</option>
+              <option value="16">/16</option>
+              <option value="8">/8</option>
+            </select>
+          </div>
+          <button class="pt-btn" id="calcSubnetBtn" type="button">Calculate</button>
+          <div class="pt-result" id="subnetResult">Click calculate.</div>
+        </div>
+        <div class="pt-card">
+          <div class="pt-card-title">📋 Selected Device</div>
+          <div class="pt-result" id="deviceInfo">No device selected.</div>
+          <div class="device-summary" id="deviceSummary"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="anticheat-overlay" id="anticheatOverlay" style="display:none;">
+  <div class="anticheat-content">
+    <div class="anticheat-icon">🚫</div>
+    <h2>RETURN TO EXAM</h2>
+    <p>You have left the exam window.</p>
+    <p class="anticheat-warn">This violation has been recorded.</p>
+  </div>
+</div>
+
+<script src="script.js"></script>
+<script>
+  (function() {
+    const raw = localStorage.getItem('current_user');
+    let user = null;
+    try { user = JSON.parse(raw); } catch(e) { user = null; }
+
+    if (!user || !user.role) {
+      localStorage.removeItem('current_user');
+      window.location.replace('index.html');
+      return;
+    }
+    if (user.role === 'admin') {
+      window.location.replace('admin.html');
+      return;
+    }
+
+    document.getElementById('userName').textContent = user.name || 'Student';
+    if (window.initStudentPage) window.initStudentPage();
+  })();
+</script>
+
+</body>
+</html>
