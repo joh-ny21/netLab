@@ -153,6 +153,7 @@
             </div>
           </div>
 
+          <!-- CRIMP CONFIG -->
           <div class="task-config-fields" id="configCrimp">
             <div class="admin-config-grid">
               <div class="admin-config-item">
@@ -163,12 +164,24 @@
                 </select>
               </div>
               <div class="admin-config-item">
+                <label>Primary Standard (this end)</label>
+                <select id="crimpStandard">
+                  <option value="B" selected>T568B</option>
+                  <option value="A">T568A</option>
+                </select>
+              </div>
+              <div class="admin-config-item">
                 <label>Task Title</label>
                 <input type="text" id="crimpTitle" value="Terminate a Straight-Through Cable">
               </div>
             </div>
+            <div class="pt-result" style="margin-top:0.5rem; font-size:0.8rem;">
+              <strong>Reference:</strong>
+              <span id="crimpHint">T568B (this end) → T568B (other end)</span>
+            </div>
           </div>
 
+          <!-- TOPOLOGY CONFIG -->
           <div class="task-config-fields" id="configTopology" style="display:none;">
             <div class="admin-config-grid">
               <div class="admin-config-item">
@@ -193,6 +206,7 @@
             </div>
           </div>
 
+          <!-- SUBNET CONFIG -->
           <div class="task-config-fields" id="configSubnet" style="display:none;">
             <div class="admin-config-grid">
               <div class="admin-config-item">
@@ -210,6 +224,7 @@
             </div>
           </div>
 
+          <!-- FIREWALL CONFIG -->
           <div class="task-config-fields" id="configFirewall" style="display:none;">
             <div class="admin-config-grid">
               <div class="admin-config-item">
@@ -229,6 +244,7 @@
             </div>
           </div>
 
+          <!-- PING CONFIG -->
           <div class="task-config-fields" id="configPing" style="display:none;">
             <div class="admin-config-grid">
               <div class="admin-config-item">
@@ -242,6 +258,7 @@
             </div>
           </div>
 
+          <!-- LB CONFIG -->
           <div class="task-config-fields" id="configLB" style="display:none;">
             <div class="admin-config-grid">
               <div class="admin-config-item">
@@ -282,7 +299,8 @@
         <div class="admin-config-section">
           <h3>📦 Quick Presets</h3>
           <div style="display:flex; gap:10px; flex-wrap:wrap;">
-            <button class="admin-action-btn" data-preset="basic" type="button">📗 Basic Crimping Exam</button>
+            <button class="admin-action-btn" data-preset="basic" type="button">📗 Basic Crimping (B only)</button>
+            <button class="admin-action-btn" data-preset="mixed" type="button">📙 Mixed A/B Exam</button>
             <button class="admin-action-btn" data-preset="network" type="button">📘 Network Fundamentals</button>
             <button class="admin-action-btn" data-preset="advanced" type="button">📕 Advanced Network Admin</button>
           </div>
