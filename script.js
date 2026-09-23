@@ -1,16 +1,17 @@
 /* ============================================================
    NETWORK SIMULATOR — SHARED LOGIC
-   Uses JSONP for cross-device config sync (bypasses CORS)
+   JSONP for cross-device config sync (CORS-free)
+   Clean canvas handling to prevent tool glitches
+   Reliable Google Sheets recording
    ============================================================ */
 
 const ADMIN_PASSWORD = 'admin123';
 
 // ============================================================
 // ⚙️ HARDCODED BACKEND — PASTE YOUR APPS SCRIPT URL HERE
-// This makes every device work without any manual setup.
 // ============================================================
-const HARDCODED_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbxsWNEpst8JujBR7d0bD3HuoiWDC935Ipazoc-5fiY-0goliqJMA90BuOYXmtinazUvgw/exec';
-const HARDCODED_TOKEN = '';
+const HARDCODED_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbxJZgK5_3fIbD2qxaZ2GOT1JO7gyNGSwmSx5px1Ex-9K5E4ZmKG9W6hU-6OagQBuRPhew/exec';
+const HARDCODED_TOKEN = '123-456-789';
 
 // ==================== STORAGE HELPERS ====================
 function getSheetConfig() {
@@ -52,10 +53,10 @@ function saveExamConfig(cfg) {
   localStorage.setItem('exam_config', JSON.stringify(cfg));
 }
 
-// ==================== JSONP REQUEST (CORS-FREE) ====================
+// ==================== JSONP (CORS-FREE GET) ====================
 let _jsonpCounter = 0;
 
-function jsonpRequest(baseUrl, params = {}, timeoutMs = 12000) {
+function jsonpRequest(baseUrl, params = {}, timeoutMs = 15000) {
   return new Promise((resolve, reject) => {
     const callbackName = 'nsJsonp_' + (++_jsonpCounter) + '_' + Date.now();
     const sep = baseUrl.includes('?') ? '&' : '?';
@@ -68,7 +69,7 @@ function jsonpRequest(baseUrl, params = {}, timeoutMs = 12000) {
     const cleanup = () => {
       if (done) return;
       done = true;
-      delete window[callbackName];
+      try { delete window[callbackName]; } catch (e) {}
       if (script.parentNode) script.parentNode.removeChild(script);
       clearTimeout(timer);
     };
@@ -97,7 +98,7 @@ function jsonpRequest(baseUrl, params = {}, timeoutMs = 12000) {
 async function publishConfigToCloud(config) {
   const sheetCfg = getSheetConfig();
   if (!sheetCfg.url) {
-    return { success: false, error: 'No webhook URL. Check HARDCODED_WEBHOOK_URL in script.js' };
+    return { success: false, error: 'No webhook URL configured' };
   }
   try {
     const payload = { action: 'save_config', config: config };
@@ -150,23 +151,77 @@ async function syncConfigFromCloud() {
   return { success: true, config: merged };
 }
 
+// ==================== SAVE RESULT (RELIABLE) ====================
 async function submitToGoogleSheet(record) {
   const cfg = getSheetConfig();
   if (!cfg.url) {
     return { success: false, error: 'No webhook URL configured' };
   }
+
+  // Trim details to fit URL length limits
+  let details = record.details || {};
+  let detailsStr = JSON.stringify(details);
+  if (detailsStr.length > 1500) {
+    details = {
+      tasks: (details.tasks || []).map(t => ({
+        title: String(t.title || '').substring(0, 50),
+        type: t.type,
+        earned: t.earned,
+        points: t.points,
+        passed: t.passed
+      })),
+      autoSubmit: details.autoSubmit,
+      reason: details.reason,
+      trimmed: true
+    };
+  }
+
+  const payload = {
+    studentName: String(record.studentName || 'Unknown').substring(0, 100),
+    studentId: String(record.studentId || '—').substring(0, 50),
+    score: record.score || 0,
+    passed: !!record.passed,
+    grade: record.grade || 'F',
+    violations: record.violations || 0,
+    challenges: record.challenges || 0,
+    timestamp: record.timestamp || new Date().toISOString(),
+    details: details
+  };
+
+  // Primary method: JSONP GET
   try {
-    const payload = { ...record, action: 'save_result' };
-    if (cfg.token) payload.token = cfg.token;
+    const params = {
+      action: 'save_result',
+      payload: JSON.stringify(payload)
+    };
+    if (cfg.token) params.token = cfg.token;
+
+    const data = await jsonpRequest(cfg.url, params, 15000);
+
+    if (data && data.success) {
+      console.log('✅ Result saved to Google Sheets, row:', data.row);
+      return { success: true, row: data.row };
+    }
+    console.warn('⚠️ JSONP save rejected:', data && data.error);
+  } catch (err) {
+    console.warn('⚠️ JSONP save failed:', err.message);
+  }
+
+  // Fallback: POST with no-cors
+  try {
+    const fallbackPayload = { ...payload, action: 'save_result' };
+    if (cfg.token) fallbackPayload.token = cfg.token;
+
     await fetch(cfg.url, {
       method: 'POST',
       mode: 'no-cors',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(fallbackPayload)
     });
-    return { success: true };
-  } catch (err) {
-    return { success: false, error: err.toString() };
+    console.log('✅ Result sent via POST fallback (unverified)');
+    return { success: true, fallback: true };
+  } catch (err2) {
+    return { success: false, error: err2.toString() };
   }
 }
 
@@ -280,7 +335,6 @@ window.initAdminPage = function () {
   const $ = (id) => document.getElementById(id);
   let pendingTasks = JSON.parse(JSON.stringify(getExamConfig().tasks || []));
 
-  // PANEL SWITCHING
   document.querySelectorAll('.admin-menu-item').forEach((item) => {
     item.addEventListener('click', () => switchPanel(item.dataset.panel));
     item.addEventListener('keydown', (e) => {
@@ -302,7 +356,6 @@ window.initAdminPage = function () {
     if (panel === 'studentResults') refreshResultsTable();
   }
 
-  // EXAM STATUS
   function refreshExamStatusUI() {
     const cfg = getExamConfig();
     const card = $('adminExamStatusCard');
@@ -358,7 +411,6 @@ window.initAdminPage = function () {
     if (el) el.addEventListener('input', updateExamPreview);
   });
 
-  // SAVE & PUBLISH TO CLOUD
   $('adminPublishCloudBtn').addEventListener('click', async () => {
     const cfg = getExamConfig();
     const timeLimit = parseInt($('adminTimeLimit').value) || 15;
@@ -726,7 +778,6 @@ window.initAdminPage = function () {
     showConfigFields(taskType.value);
     refreshTokenUI();
 
-    // Show webhook URL status
     const cfg = getSheetConfig();
     const urlEl = $('systemWebhookUrl');
     if (urlEl) {
@@ -756,7 +807,6 @@ window.initAdminPage = function () {
 window.initStudentPage = function () {
   const $ = (id) => document.getElementById(id);
 
-  // Tab switching
   function switchTab(tab) {
     document.querySelectorAll('.tab-btn').forEach((t) => t.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach((c) => c.classList.remove('active'));
@@ -771,7 +821,7 @@ window.initStudentPage = function () {
       $('tabAssessBtn').classList.add('active');
       $('assessTab').classList.add('active');
       if (window.refreshExamScreen) window.refreshExamScreen();
-      if (typeof pollCloudConfig === 'function') setTimeout(pollCloudConfig, 300);
+      if (typeof window.__pollCloudConfig === 'function') setTimeout(window.__pollCloudConfig, 300);
     }
   }
 
@@ -1153,6 +1203,307 @@ window.initStudentPage = function () {
       } catch (e) { return ''; }
     }
 
+    // ============ LAB HELPERS (FIXED) ============
+    const LAB_STYLE = {
+      pc: { icon: '💻', color: '#5a6a7a', label: 'PC' },
+      server: { icon: '🖥️', color: '#7a6a9a', label: 'Server' },
+      switch: { icon: '🔀', color: '#4a9b8e', label: 'Switch' },
+      router: { icon: '📡', color: '#3a7ca5', label: 'Router' },
+      firewall: { icon: '🛡️', color: '#a55a4a', label: 'Firewall' },
+      lb: { icon: '⚖️', color: '#8a6a3a', label: 'LoadBalancer' },
+      internet: { icon: '🌍', color: '#2a6a9a', label: 'Internet' }
+    };
+
+    function createLab(canvasId, deviceTypes) {
+      const canvas = $(canvasId);
+      // 🔧 FIX: Clone canvas to remove old listeners
+      const cloned = canvas.cloneNode(true);
+      canvas.parentNode.replaceChild(cloned, canvas);
+
+      const ctx = cloned.getContext('2d');
+      cloned.width = 700;
+      cloned.height = 380;
+
+      return {
+        canvas: cloned,
+        ctx,
+        devices: [],
+        connections: [],
+        tool: 'connect',
+        deviceType: deviceTypes[0] || 'pc',
+        dragDeviceId: null,
+        dragOffsetX: 0,
+        dragOffsetY: 0,
+        connectSourceId: null,
+        nextId: 1,
+        deviceTypes,
+        listeners: []
+      };
+    }
+
+    function cleanupLab(lab) {
+      if (!lab) return;
+      if (Array.isArray(lab.listeners)) {
+        lab.listeners.forEach(({ el, type, fn }) => {
+          try { el.removeEventListener(type, fn); } catch (e) {}
+        });
+      }
+      lab.listeners = [];
+      lab.devices = [];
+      lab.connections = [];
+      lab.connectSourceId = null;
+      lab.dragDeviceId = null;
+      currentLab = null;
+    }
+
+    function labDraw(lab) {
+      const { ctx, canvas, devices, connections, tool, connectSourceId } = lab;
+      const CW = canvas.width, CH = canvas.height;
+      ctx.clearRect(0, 0, CW, CH);
+      ctx.strokeStyle = '#1a2c38';
+      ctx.lineWidth = 1;
+      for (let x = 0; x < CW; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, CH); ctx.stroke(); }
+      for (let y = 0; y < CH; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(CW, y); ctx.stroke(); }
+
+      connections.forEach((conn) => {
+        const a = devices.find((d) => d.id === conn.from);
+        const b = devices.find((d) => d.id === conn.to);
+        if (!a || !b) return;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.strokeStyle = '#4a8aaa';
+        ctx.lineWidth = 4;
+        ctx.stroke();
+      });
+
+      if (tool === 'connect' && connectSourceId !== null) {
+        const s = devices.find((d) => d.id === connectSourceId);
+        if (s) {
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, 34, 0, Math.PI * 2);
+          ctx.strokeStyle = '#ffb347';
+          ctx.lineWidth = 3;
+          ctx.stroke();
+        }
+      }
+
+      devices.forEach((d) => {
+        const style = LAB_STYLE[d.type];
+        if (!style) return;
+        ctx.beginPath();
+        ctx.arc(d.x, d.y, 28, 0, Math.PI * 2);
+        ctx.fillStyle = style.color;
+        ctx.fill();
+        ctx.strokeStyle = '#2a4a5a';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.font = '24px "Segoe UI", system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#fff';
+        ctx.fillText(style.icon, d.x, d.y - 2);
+        ctx.font = 'bold 10px "Segoe UI", system-ui, sans-serif';
+        ctx.fillStyle = '#d0e8f5';
+        ctx.fillText(d.label || style.label, d.x, d.y + 38);
+      });
+    }
+
+    function labAttach(lab) {
+      const canvas = lab.canvas;
+
+      const mousedown = (e) => {
+        const rect = canvas.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) return;
+        const sx = canvas.width / rect.width;
+        const sy = canvas.height / rect.height;
+        const x = (e.clientX - rect.left) * sx;
+        const y = (e.clientY - rect.top) * sy;
+
+        const hit = lab.devices.find((d) => Math.hypot(x - d.x, y - d.y) < 30);
+
+        if (lab.tool === 'delete') {
+          if (hit) {
+            lab.devices = lab.devices.filter((d) => d.id !== hit.id);
+            lab.connections = lab.connections.filter((c) => c.from !== hit.id && c.to !== hit.id);
+            labDraw(lab);
+          }
+          return;
+        }
+
+        if (lab.tool === 'connect') {
+          if (hit) {
+            if (lab.connectSourceId === null) {
+              lab.connectSourceId = hit.id;
+            } else if (lab.connectSourceId === hit.id) {
+              lab.connectSourceId = null;
+            } else {
+              const exists = lab.connections.some((c) =>
+                (c.from === lab.connectSourceId && c.to === hit.id) ||
+                (c.from === hit.id && c.to === lab.connectSourceId));
+              if (!exists) lab.connections.push({ from: lab.connectSourceId, to: hit.id });
+              lab.connectSourceId = null;
+            }
+            labDraw(lab);
+          } else {
+            const style = LAB_STYLE[lab.deviceType];
+            if (!style) return;
+            lab.devices.push({
+              id: lab.nextId++,
+              type: lab.deviceType,
+              x: Math.min(Math.max(x, 40), canvas.width - 40),
+              y: Math.min(Math.max(y, 40), canvas.height - 40),
+              label: `${style.label}${lab.nextId - 1}`
+            });
+            labDraw(lab);
+          }
+          return;
+        }
+
+        if (lab.tool === 'select' && hit) {
+          lab.dragDeviceId = hit.id;
+          lab.dragOffsetX = x - hit.x;
+          lab.dragOffsetY = y - hit.y;
+        }
+      };
+
+      const mousemove = (e) => {
+        const rect = canvas.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) return;
+        const sx = canvas.width / rect.width;
+        const sy = canvas.height / rect.height;
+        const x = (e.clientX - rect.left) * sx;
+        const y = (e.clientY - rect.top) * sy;
+
+        if (lab.dragDeviceId) {
+          const d = lab.devices.find((dev) => dev.id === lab.dragDeviceId);
+          if (d) {
+            d.x = Math.min(Math.max(x - lab.dragOffsetX, 40), canvas.width - 40);
+            d.y = Math.min(Math.max(y - lab.dragOffsetY, 40), canvas.height - 40);
+            labDraw(lab);
+          }
+        }
+      };
+
+      const mouseup = () => { lab.dragDeviceId = null; };
+      const mouseleave = () => { lab.dragDeviceId = null; };
+
+      canvas.addEventListener('mousedown', mousedown);
+      canvas.addEventListener('mousemove', mousemove);
+      canvas.addEventListener('mouseup', mouseup);
+      canvas.addEventListener('mouseleave', mouseleave);
+
+      lab.listeners = [
+        { el: canvas, type: 'mousedown', fn: mousedown },
+        { el: canvas, type: 'mousemove', fn: mousemove },
+        { el: canvas, type: 'mouseup', fn: mouseup },
+        { el: canvas, type: 'mouseleave', fn: mouseleave }
+      ];
+    }
+
+    function detectLabTopology(lab) {
+      const devices = lab.devices, connections = lab.connections;
+      const n = devices.length, e = connections.length;
+      if (n === 0) return 'none';
+      if (n === 1) return 'single';
+      if (e === 0) return 'isolated';
+      const degrees = {};
+      devices.forEach((d) => degrees[d.id] = 0);
+      connections.forEach((c) => {
+        if (degrees[c.from] !== undefined) degrees[c.from]++;
+        if (degrees[c.to] !== undefined) degrees[c.to]++;
+      });
+      const dv = Object.values(degrees);
+      const adj = {};
+      devices.forEach((d) => adj[d.id] = []);
+      connections.forEach((c) => {
+        if (adj[c.from]) adj[c.from].push(c.to);
+        if (adj[c.to]) adj[c.to].push(c.from);
+      });
+      function bfs(start) {
+        const v = new Set([start]), q = [start];
+        while (q.length) {
+          const node = q.shift();
+          (adj[node] || []).forEach((nb) => { if (!v.has(nb)) { v.add(nb); q.push(nb); } });
+        }
+        return v;
+      }
+      const visited = bfs(devices[0].id);
+      const connected = visited.size === n;
+      if (!connected) return 'disconnected';
+      if (n === 2 && e === 1) return 'point';
+      const starHub = dv.filter((d) => d > 2).length === 1;
+      const allLeaf = dv.filter((d) => d === 1).length === n - 1;
+      if (starHub && allLeaf && n >= 3) return 'star';
+      const maxEdges = (n * (n - 1)) / 2;
+      if (e === maxEdges && n >= 3) return 'fullmesh';
+      const allDeg2 = dv.every((d) => d === 2);
+      if (allDeg2 && n >= 3 && e === n) return 'ring';
+      const deg1 = dv.filter((d) => d === 1).length;
+      const deg2 = dv.filter((d) => d === 2).length;
+      if (deg1 === 2 && deg2 === n - 2 && e === n - 1 && n >= 3) return 'bus';
+      if (e === n - 1) return 'tree';
+      return 'hybrid';
+    }
+
+    function setupExamLabToolbar(deviceTypes) {
+      const bar = $('examLabDeviceBar');
+      // 🔧 FIX: Clone bar to remove old listeners
+      const cloned = bar.cloneNode(true);
+      bar.parentNode.replaceChild(cloned, bar);
+
+      deviceTypes.forEach((type, i) => {
+        const style = LAB_STYLE[type];
+        if (!style) return;
+        const btn = document.createElement('button');
+        btn.className = 'pt-device-btn' + (i === 0 ? ' selected' : '');
+        btn.type = 'button';
+        btn.innerHTML = `<span class="icon">${style.icon}</span> ${style.label}`;
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          cloned.querySelectorAll('.pt-device-btn').forEach((b) => b.classList.remove('selected'));
+          btn.classList.add('selected');
+          if (currentLab) currentLab.deviceType = type;
+        });
+        cloned.appendChild(btn);
+      });
+
+      // Reset tool buttons
+      const toolsBar = $('examLabToolsBar');
+      if (toolsBar) {
+        const toolsClone = toolsBar.cloneNode(true);
+        toolsBar.parentNode.replaceChild(toolsClone, toolsBar);
+
+        toolsClone.querySelectorAll('.tool-btn[data-exam-tool]').forEach((btn) => {
+          const toolName = btn.dataset.examTool;
+          btn.classList.toggle('active', toolName === 'connect');
+          btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            toolsClone.querySelectorAll('.tool-btn[data-exam-tool]').forEach((b) => b.classList.remove('active'));
+            btn.classList.add('active');
+            if (currentLab) currentLab.tool = toolName;
+          });
+        });
+
+        const clearBtn = toolsClone.querySelector('#examLabClear');
+        if (clearBtn) {
+          clearBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!currentLab) return;
+            currentLab.devices = [];
+            currentLab.connections = [];
+            currentLab.connectSourceId = null;
+            currentLab.dragDeviceId = null;
+            labDraw(currentLab);
+          });
+        }
+      }
+    }
+
+    // ============ EXAM SCREEN ============
     window.refreshExamScreen = function () {
       const cfg = getExamConfig();
       $('examLockedScreen').style.display = 'none';
@@ -1218,7 +1569,6 @@ window.initStudentPage = function () {
           const hash = configHash(res.config);
           if (hash !== lastConfigHash) {
             lastConfigHash = hash;
-            console.log('🔄 Cloud config changed — refreshing exam screen');
             window.refreshExamScreen();
             const statusEl = $('pollStatus');
             if (statusEl) statusEl.textContent = '✅ Config updated!';
@@ -1226,6 +1576,8 @@ window.initStudentPage = function () {
         }
       } catch (err) {}
     }
+
+    window.__pollCloudConfig = pollCloudConfig;
 
     function startPolling() {
       if (pollTimer) clearInterval(pollTimer);
@@ -1398,9 +1750,14 @@ window.initStudentPage = function () {
       $('examLBRule').value = '';
       $('examPingOutput').textContent = 'Build the topology, then click Run Ping.';
       $('examLBOutput').textContent = 'Configure topology and algorithm, then simulate.';
+      if (currentLab && currentLab.ctx && currentLab.canvas) {
+        currentLab.ctx.clearRect(0, 0, currentLab.canvas.width, currentLab.canvas.height);
+      }
     }
 
     function loadTask() {
+      if (currentLab) cleanupLab(currentLab);
+
       if (currentTaskIdx >= examTasks.length) {
         endExam(false, 'All tasks completed');
         return;
@@ -1553,228 +1910,6 @@ window.initStudentPage = function () {
       finishTask(t, earned, allCorrect, allCorrect ? 'Perfect crimp!' : `${correct}/8 wires correct`);
     }
 
-    const LAB_STYLE = {
-      pc: { icon: '💻', color: '#5a6a7a', label: 'PC' },
-      server: { icon: '🖥️', color: '#7a6a9a', label: 'Server' },
-      switch: { icon: '🔀', color: '#4a9b8e', label: 'Switch' },
-      router: { icon: '📡', color: '#3a7ca5', label: 'Router' },
-      firewall: { icon: '🛡️', color: '#a55a4a', label: 'Firewall' },
-      lb: { icon: '⚖️', color: '#8a6a3a', label: 'LoadBalancer' },
-      internet: { icon: '🌍', color: '#2a6a9a', label: 'Internet' }
-    };
-
-    function createLab(canvasId, deviceTypes) {
-      const canvas = $(canvasId);
-      const ctx = canvas.getContext('2d');
-      canvas.width = 700;
-      canvas.height = 380;
-      return {
-        canvas, ctx,
-        devices: [], connections: [],
-        tool: 'connect',
-        deviceType: deviceTypes[0] || 'pc',
-        dragDeviceId: null, dragOffsetX: 0, dragOffsetY: 0,
-        connectSourceId: null, nextId: 1, deviceTypes
-      };
-    }
-
-    function labDraw(lab) {
-      const { ctx, canvas, devices, connections, tool, connectSourceId } = lab;
-      const CW = canvas.width, CH = canvas.height;
-      ctx.clearRect(0, 0, CW, CH);
-      ctx.strokeStyle = '#1a2c38';
-      ctx.lineWidth = 1;
-      for (let x = 0; x < CW; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, CH); ctx.stroke(); }
-      for (let y = 0; y < CH; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(CW, y); ctx.stroke(); }
-
-      connections.forEach((conn) => {
-        const a = devices.find((d) => d.id === conn.from);
-        const b = devices.find((d) => d.id === conn.to);
-        if (!a || !b) return;
-        ctx.beginPath();
-        ctx.moveTo(a.x, a.y);
-        ctx.lineTo(b.x, b.y);
-        ctx.strokeStyle = '#4a8aaa';
-        ctx.lineWidth = 4;
-        ctx.stroke();
-      });
-
-      if (tool === 'connect' && connectSourceId !== null) {
-        const s = devices.find((d) => d.id === connectSourceId);
-        if (s) {
-          ctx.beginPath();
-          ctx.arc(s.x, s.y, 34, 0, Math.PI * 2);
-          ctx.strokeStyle = '#ffb347';
-          ctx.lineWidth = 3;
-          ctx.stroke();
-        }
-      }
-
-      devices.forEach((d) => {
-        const style = LAB_STYLE[d.type];
-        if (!style) return;
-        ctx.beginPath();
-        ctx.arc(d.x, d.y, 28, 0, Math.PI * 2);
-        ctx.fillStyle = style.color;
-        ctx.fill();
-        ctx.strokeStyle = '#2a4a5a';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        ctx.font = '24px "Segoe UI", system-ui, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillStyle = '#fff';
-        ctx.fillText(style.icon, d.x, d.y - 2);
-        ctx.font = 'bold 10px "Segoe UI", system-ui, sans-serif';
-        ctx.fillStyle = '#d0e8f5';
-        ctx.fillText(d.label || style.label, d.x, d.y + 38);
-      });
-    }
-
-    function labAttach(lab) {
-      const canvas = lab.canvas;
-      canvas.addEventListener('mousedown', (e) => {
-        const rect = canvas.getBoundingClientRect();
-        const sx = canvas.width / rect.width, sy = canvas.height / rect.height;
-        const x = (e.clientX - rect.left) * sx, y = (e.clientY - rect.top) * sy;
-        const hit = lab.devices.find((d) => Math.hypot(x - d.x, y - d.y) < 30);
-
-        if (lab.tool === 'delete') {
-          if (hit) {
-            lab.devices = lab.devices.filter((d) => d.id !== hit.id);
-            lab.connections = lab.connections.filter((c) => c.from !== hit.id && c.to !== hit.id);
-            labDraw(lab);
-          }
-          return;
-        }
-        if (lab.tool === 'connect') {
-          if (hit) {
-            if (lab.connectSourceId === null) {
-              lab.connectSourceId = hit.id;
-            } else if (lab.connectSourceId === hit.id) {
-              lab.connectSourceId = null;
-            } else {
-              const exists = lab.connections.some((c) =>
-                (c.from === lab.connectSourceId && c.to === hit.id) ||
-                (c.from === hit.id && c.to === lab.connectSourceId));
-              if (!exists) lab.connections.push({ from: lab.connectSourceId, to: hit.id });
-              lab.connectSourceId = null;
-            }
-            labDraw(lab);
-          } else {
-            const style = LAB_STYLE[lab.deviceType];
-            if (!style) return;
-            lab.devices.push({
-              id: lab.nextId++, type: lab.deviceType,
-              x: Math.min(Math.max(x, 40), canvas.width - 40),
-              y: Math.min(Math.max(y, 40), canvas.height - 40),
-              label: `${style.label}${lab.nextId - 1}`
-            });
-            labDraw(lab);
-          }
-          return;
-        }
-        if (lab.tool === 'select' && hit) {
-          lab.dragDeviceId = hit.id;
-          lab.dragOffsetX = x - hit.x;
-          lab.dragOffsetY = y - hit.y;
-        }
-      });
-      canvas.addEventListener('mousemove', (e) => {
-        const rect = canvas.getBoundingClientRect();
-        const sx = canvas.width / rect.width, sy = canvas.height / rect.height;
-        const x = (e.clientX - rect.left) * sx, y = (e.clientY - rect.top) * sy;
-        if (lab.dragDeviceId) {
-          const d = lab.devices.find((dev) => dev.id === lab.dragDeviceId);
-          if (d) {
-            d.x = Math.min(Math.max(x - lab.dragOffsetX, 40), canvas.width - 40);
-            d.y = Math.min(Math.max(y - lab.dragOffsetY, 40), canvas.height - 40);
-            labDraw(lab);
-          }
-        }
-      });
-      canvas.addEventListener('mouseup', () => { lab.dragDeviceId = null; });
-      canvas.addEventListener('mouseleave', () => { lab.dragDeviceId = null; });
-    }
-
-    function detectLabTopology(lab) {
-      const devices = lab.devices, connections = lab.connections;
-      const n = devices.length, e = connections.length;
-      if (n === 0) return 'none';
-      if (n === 1) return 'single';
-      if (e === 0) return 'isolated';
-      const degrees = {};
-      devices.forEach((d) => degrees[d.id] = 0);
-      connections.forEach((c) => {
-        if (degrees[c.from] !== undefined) degrees[c.from]++;
-        if (degrees[c.to] !== undefined) degrees[c.to]++;
-      });
-      const dv = Object.values(degrees);
-      const adj = {};
-      devices.forEach((d) => adj[d.id] = []);
-      connections.forEach((c) => {
-        if (adj[c.from]) adj[c.from].push(c.to);
-        if (adj[c.to]) adj[c.to].push(c.from);
-      });
-      function bfs(start) {
-        const v = new Set([start]), q = [start];
-        while (q.length) {
-          const node = q.shift();
-          (adj[node] || []).forEach((nb) => { if (!v.has(nb)) { v.add(nb); q.push(nb); } });
-        }
-        return v;
-      }
-      const visited = bfs(devices[0].id);
-      const connected = visited.size === n;
-      if (!connected) return 'disconnected';
-      if (n === 2 && e === 1) return 'point';
-      const starHub = dv.filter((d) => d > 2).length === 1;
-      const allLeaf = dv.filter((d) => d === 1).length === n - 1;
-      if (starHub && allLeaf && n >= 3) return 'star';
-      const maxEdges = (n * (n - 1)) / 2;
-      if (e === maxEdges && n >= 3) return 'fullmesh';
-      const allDeg2 = dv.every((d) => d === 2);
-      if (allDeg2 && n >= 3 && e === n) return 'ring';
-      const deg1 = dv.filter((d) => d === 1).length;
-      const deg2 = dv.filter((d) => d === 2).length;
-      if (deg1 === 2 && deg2 === n - 2 && e === n - 1 && n >= 3) return 'bus';
-      if (e === n - 1) return 'tree';
-      return 'hybrid';
-    }
-
-    function setupExamLabToolbar(deviceTypes) {
-      const bar = $('examLabDeviceBar');
-      bar.innerHTML = '';
-      deviceTypes.forEach((type, i) => {
-        const style = LAB_STYLE[type];
-        if (!style) return;
-        const btn = document.createElement('button');
-        btn.className = 'pt-device-btn' + (i === 0 ? ' selected' : '');
-        btn.type = 'button';
-        btn.innerHTML = `<span class="icon">${style.icon}</span> ${style.label}`;
-        btn.addEventListener('click', () => {
-          bar.querySelectorAll('.pt-device-btn').forEach((b) => b.classList.remove('selected'));
-          btn.classList.add('selected');
-          if (currentLab) currentLab.deviceType = type;
-        });
-        bar.appendChild(btn);
-      });
-
-      document.querySelectorAll('#examLabUI .tool-btn[data-exam-tool]').forEach((btn) => {
-        btn.onclick = () => {
-          document.querySelectorAll('#examLabUI .tool-btn[data-exam-tool]').forEach((b) => b.classList.remove('active'));
-          btn.classList.add('active');
-          if (currentLab) currentLab.tool = btn.dataset.examTool;
-        };
-      });
-      $('examLabClear').onclick = () => {
-        if (!currentLab) return;
-        currentLab.devices = [];
-        currentLab.connections = [];
-        labDraw(currentLab);
-      };
-    }
-
     function loadTopoTask(t) {
       $('examLabUI').style.display = 'flex';
       $('examTaskDesc').innerHTML =
@@ -1880,6 +2015,7 @@ window.initStudentPage = function () {
       currentLab = createLab('examTopoCanvas', ['pc', 'router', 'internet']);
       labAttach(currentLab);
       setupExamLabToolbar(currentLab.deviceTypes);
+
       $('examPingRunBtn').onclick = () => {
         const net = currentLab.devices.find((d) => d.type === 'internet');
         const rtr = currentLab.devices.find((d) => d.type === 'router');
@@ -1936,6 +2072,7 @@ window.initStudentPage = function () {
       currentLab = createLab('examTopoCanvas', ['pc', 'lb', 'server']);
       labAttach(currentLab);
       setupExamLabToolbar(currentLab.deviceTypes);
+
       $('examLBRunBtn').onclick = () => {
         const lb = currentLab.devices.find((d) => d.type === 'lb');
         if (!lb) {
@@ -2090,7 +2227,7 @@ window.initStudentPage = function () {
         syncStatus.className = 'pt-result';
         const result = await submitToGoogleSheet(examRecord);
         if (result.success) {
-          syncStatus.textContent = '✅ Record saved to cloud.';
+          syncStatus.textContent = '✅ Record saved to cloud.' + (result.row ? ` (row ${result.row})` : '');
           syncStatus.className = 'pt-result ok';
         } else {
           syncStatus.textContent = '⚠️ Local save OK, cloud failed: ' + result.error;
