@@ -42,9 +42,6 @@
         <div class="admin-menu-item" data-panel="studentResults" role="button" tabindex="0">
           <span class="ami-icon">📊</span> Student Results
         </div>
-        <div class="admin-menu-item" data-panel="cloudSync" role="button" tabindex="0">
-          <span class="ami-icon">☁️</span> Cloud Sync
-        </div>
         <div class="admin-menu-item" data-panel="systemInfo" role="button" tabindex="0">
           <span class="ami-icon">ℹ️</span> System Info
         </div>
@@ -97,10 +94,9 @@
               </select>
             </div>
           </div>
-          <div style="display:flex; gap:10px; flex-wrap:wrap;">
-            <button class="admin-save-btn" id="adminSaveConfigBtn" type="button" style="flex:1;">💾 SAVE LOCALLY</button>
-            <button class="admin-save-btn" id="adminPublishCloudBtn" type="button" style="flex:1; background:#2f6054; border-bottom-color:#163b32;">☁️ PUBLISH TO CLOUD</button>
-          </div>
+          <button class="admin-save-btn" id="adminPublishCloudBtn" type="button" style="background:#2f6054; border-bottom-color:#163b32;">
+            ☁️ SAVE & PUBLISH TO ALL DEVICES
+          </button>
           <div class="admin-config-msg" id="adminConfigMsg"></div>
         </div>
 
@@ -277,7 +273,7 @@
             <div class="empty-row">No tasks yet. Add one above.</div>
           </div>
           <div style="display:flex; gap:10px; margin-top:1rem; flex-wrap:wrap;">
-            <button class="admin-action-btn" id="adminSaveTasksBtn" type="button" style="flex:1;">💾 SAVE & PUBLISH</button>
+            <button class="admin-action-btn" id="adminSaveTasksBtn" type="button" style="flex:1;">💾 SAVE & PUBLISH TO ALL DEVICES</button>
             <button class="admin-action-btn danger" id="adminClearTasksBtn" type="button" style="flex:1;">🗑️ CLEAR ALL TASKS</button>
           </div>
           <div class="admin-config-msg" id="taskListMsg"></div>
@@ -379,62 +375,6 @@
         </div>
       </div>
 
-      <!-- CLOUD SYNC -->
-      <div class="admin-panel" id="panelCloudSync">
-        <div class="admin-panel-header">
-          <h2>☁️ Cloud Sync</h2>
-          <p>Connect to Google Sheets for cross-device sync and permanent storage.</p>
-        </div>
-
-        <div class="admin-config-section">
-          <h3>🔗 Webhook Configuration</h3>
-          <div class="admin-config-item" style="margin-bottom:1rem;">
-            <label>Google Apps Script Web App URL</label>
-            <input type="text" id="adminSheetUrl" placeholder="https://script.google.com/macros/s/.../exec">
-          </div>
-          <div class="admin-config-grid">
-            <div class="admin-config-item">
-              <label>Secret Token (optional)</label>
-              <input type="text" id="adminSheetToken" placeholder="your-secret-token">
-            </div>
-            <div class="admin-config-item">
-              <label>Auto-Sync on Exam End</label>
-              <select id="adminAutoSync">
-                <option value="yes" selected>Yes</option>
-                <option value="no">No</option>
-              </select>
-            </div>
-          </div>
-          <button class="admin-save-btn" id="adminSaveSheetConfig" type="button">💾 SAVE SHEET CONFIG</button>
-          <div class="admin-config-msg" id="adminSheetMsg"></div>
-        </div>
-
-        <div class="admin-config-section">
-          <h3>🧪 Test Connection</h3>
-          <div style="display:flex; gap:10px; flex-wrap:wrap;">
-            <button class="admin-action-btn" id="adminTestSave" type="button" style="flex:1;">📤 Test Save Config</button>
-            <button class="admin-action-btn" id="adminTestFetch" type="button" style="flex:1;">📥 Test Fetch Config</button>
-          </div>
-          <div class="pt-result" id="adminSheetTestResult" style="margin-top:1rem;">
-            No test performed yet.
-          </div>
-        </div>
-
-        <div class="admin-config-section">
-          <h3>📖 Setup Instructions</h3>
-          <ol style="color:#b8d0e0; font-size:0.85rem; line-height:1.8; padding-left:1.5rem;">
-            <li>Open your Google Sheet</li>
-            <li>Click <strong>Extensions → Apps Script</strong></li>
-            <li>Paste the code from <code>google-apps-script.js</code></li>
-            <li>Click <strong>Deploy → New Deployment → Web app</strong></li>
-            <li>Set <strong>Execute as: Me</strong> and <strong>Who has access: Anyone</strong></li>
-            <li>Click <strong>Deploy</strong>, authorize, and copy the Web App URL</li>
-            <li>Paste the URL above and click <strong>SAVE SHEET CONFIG</strong></li>
-            <li>Click <strong>PUBLISH TO CLOUD</strong> in Exam Control to sync across all devices</li>
-          </ol>
-        </div>
-      </div>
-
       <!-- SYSTEM INFO -->
       <div class="admin-panel" id="panelSystemInfo">
         <div class="admin-panel-header">
@@ -451,7 +391,7 @@
           <div class="admin-info-card">
             <div class="aic-icon">☁️</div>
             <div class="aic-title">Cloud Sync</div>
-            <div class="aic-value" id="systemSheetStatus">Not Configured</div>
+            <div class="aic-value" id="systemSheetStatus">Checking...</div>
           </div>
           <div class="admin-info-card">
             <div class="aic-icon">📊</div>
@@ -463,6 +403,13 @@
             <div class="aic-title">Anti-Cheat</div>
             <div class="aic-value">Enabled</div>
           </div>
+        </div>
+
+        <div class="admin-config-section">
+          <h3>🔗 Backend</h3>
+          <p style="color:#8ba9bc; font-size:0.85rem; word-break:break-all;">
+            Web App URL: <strong id="systemWebhookUrl" style="color:#b8e8ff;">—</strong>
+          </p>
         </div>
 
         <div class="admin-config-section">
