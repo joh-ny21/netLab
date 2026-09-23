@@ -5,35 +5,28 @@
 
 const ADMIN_PASSWORD = 'admin123';
 
-// ==================== STORAGE HELPERS ====================
 // ============================================================
-// ⚙️ HARDCODED DEFAULT — Used when localStorage has no config
-// This ensures every device/browser automatically connects
-// to your Google Apps Script backend without manual setup.
+// ⚙️ HARDCODED BACKEND — PASTE YOUR APPS SCRIPT URL HERE
+// This makes every device work without any manual setup.
 // ============================================================
-const DEFAULT_SHEET_CONFIG = {
-  url: 'https://script.google.com/macros/s/AKfycbxRU_OhCZXKs9bbOesJAAemzQgdNsb85gTcmXetFx2BkBqrkTgOJk4xL7fNpiMAXpAdVg/exec',  // ← PASTE YOUR URL HERE
-  token: '',                                                  // ← Optional secret token
-  autoSync: true
-};
+const HARDCODED_WEBHOOK_URL = 'PASTE_YOUR_APPS_SCRIPT_URL_HERE';
+const HARDCODED_TOKEN = '';
 
+// ==================== STORAGE HELPERS ====================
 function getSheetConfig() {
+  let stored = {};
   try {
-    const s = JSON.parse(localStorage.getItem('sheet_config') || 'null');
-    // If localStorage has no config, fall back to hardcoded default
-    if (!s || !s.url) return { ...DEFAULT_SHEET_CONFIG };
-    
-    // Merge: localStorage overrides default (admin can still customize)
-    return {
-      url: s.url || DEFAULT_SHEET_CONFIG.url,
-      token: s.token || DEFAULT_SHEET_CONFIG.token,
-      autoSync: s.autoSync !== false
-    };
-  } catch (e) {
-    return { ...DEFAULT_SHEET_CONFIG };
-  }
-   
-}function saveSheetConfig(cfg) {
+    stored = JSON.parse(localStorage.getItem('sheet_config') || '{}');
+  } catch (e) { stored = {}; }
+
+  const url = (stored.url && stored.url.trim()) || HARDCODED_WEBHOOK_URL || '';
+  const token = (stored.token && stored.token.trim()) || HARDCODED_TOKEN || '';
+  const autoSync = stored.autoSync !== false;
+
+  return { url, token, autoSync };
+}
+
+function saveSheetConfig(cfg) {
   localStorage.setItem('sheet_config', JSON.stringify(cfg));
 }
 
@@ -103,8 +96,8 @@ function jsonpRequest(baseUrl, params = {}, timeoutMs = 12000) {
 // ==================== CLOUD SYNC ====================
 async function publishConfigToCloud(config) {
   const sheetCfg = getSheetConfig();
-  if (!sheetCfg.url || sheetCfg.url.includes('YOUR_SCRIPT_ID')) {
-    return { success: false, error: 'Webhook not configured' };
+  if (!sheetCfg.url) {
+    return { success: false, error: 'No webhook URL. Check HARDCODED_WEBHOOK_URL in script.js' };
   }
   try {
     const payload = { action: 'save_config', config: config };
@@ -124,8 +117,8 @@ async function publishConfigToCloud(config) {
 
 async function fetchConfigFromCloud() {
   const sheetCfg = getSheetConfig();
-  if (!sheetCfg.url || sheetCfg.url.includes('YOUR_SCRIPT_ID')) {
-    return { success: false, error: 'Webhook not configured' };
+  if (!sheetCfg.url) {
+    return { success: false, error: 'No webhook URL configured' };
   }
   try {
     const data = await jsonpRequest(sheetCfg.url, { action: 'get_config' });
@@ -159,8 +152,8 @@ async function syncConfigFromCloud() {
 
 async function submitToGoogleSheet(record) {
   const cfg = getSheetConfig();
-  if (!cfg.url || cfg.url.includes('YOUR_SCRIPT_ID')) {
-    return { success: false, error: 'Webhook not configured' };
+  if (!cfg.url) {
+    return { success: false, error: 'No webhook URL configured' };
   }
   try {
     const payload = { ...record, action: 'save_result' };
@@ -179,8 +172,8 @@ async function submitToGoogleSheet(record) {
 
 async function fetchResultsFromCloud() {
   const sheetCfg = getSheetConfig();
-  if (!sheetCfg.url || sheetCfg.url.includes('YOUR_SCRIPT_ID')) {
-    return { success: false, error: 'Webhook not configured' };
+  if (!sheetCfg.url) {
+    return { success: false, error: 'No webhook URL configured' };
   }
   try {
     const data = await jsonpRequest(sheetCfg.url, { action: 'list_results' });
@@ -307,7 +300,6 @@ window.initAdminPage = function () {
     if (panel === 'taskBuilder') renderTaskList();
     if (panel === 'retakeToken') refreshTokenUI();
     if (panel === 'studentResults') refreshResultsTable();
-    if (panel === 'cloudSync') loadSheetConfigToInputs();
   }
 
   // EXAM STATUS
@@ -366,7 +358,8 @@ window.initAdminPage = function () {
     if (el) el.addEventListener('input', updateExamPreview);
   });
 
-  $('adminSaveConfigBtn').addEventListener('click', () => {
+  // SAVE & PUBLISH TO CLOUD
+  $('adminPublishCloudBtn').addEventListener('click', async () => {
     const cfg = getExamConfig();
     const timeLimit = parseInt($('adminTimeLimit').value) || 15;
     const passThreshold = parseInt($('adminPassThreshold').value) || 70;
@@ -383,22 +376,6 @@ window.initAdminPage = function () {
     cfg.shuffleTasks = shuffleTasks;
     saveExamConfig(cfg);
     updateExamPreview();
-    $('adminConfigMsg').textContent = '✅ Settings saved locally.';
-    setTimeout(() => { $('adminConfigMsg').textContent = ''; }, 3000);
-  });
-
-  $('adminPublishCloudBtn').addEventListener('click', async () => {
-    const sheetCfg = getSheetConfig();
-    if (!sheetCfg.url || sheetCfg.url.includes('YOUR_SCRIPT_ID')) {
-      alert('⚠️ Configure the Google Sheets Webhook URL first (Cloud Sync panel).');
-      return;
-    }
-    const cfg = getExamConfig();
-    cfg.timeLimitMinutes = parseInt($('adminTimeLimit').value) || cfg.timeLimitMinutes;
-    cfg.passThreshold = parseInt($('adminPassThreshold').value) || cfg.passThreshold;
-    cfg.maxViolations = parseInt($('adminMaxViolations').value) || cfg.maxViolations;
-    cfg.shuffleTasks = $('adminShuffleTasks').value === 'yes';
-    saveExamConfig(cfg);
 
     $('adminConfigMsg').textContent = '☁️ Publishing to cloud...';
     const result = await publishConfigToCloud(cfg);
@@ -680,73 +657,6 @@ window.initAdminPage = function () {
     setTimeout(() => { $('retakeTokenMsg').textContent = ''; }, 2500);
   });
 
-  // CLOUD SYNC
-  function loadSheetConfigToInputs() {
-    const cfg = getSheetConfig();
-    $('adminSheetUrl').value = cfg.url || '';
-    $('adminSheetToken').value = cfg.token || '';
-    $('adminAutoSync').value = cfg.autoSync ? 'yes' : 'no';
-    updateSheetStatus();
-  }
-
-  function updateSheetStatus() {
-    const cfg = getSheetConfig();
-    $('systemSheetStatus').textContent =
-      (cfg.url && !cfg.url.includes('YOUR_SCRIPT_ID')) ? 'Configured ✅' : 'Not Configured';
-  }
-
-  $('adminSaveSheetConfig').addEventListener('click', () => {
-    saveSheetConfig({
-      url: $('adminSheetUrl').value.trim(),
-      token: $('adminSheetToken').value.trim(),
-      autoSync: $('adminAutoSync').value === 'yes'
-    });
-    updateSheetStatus();
-    $('adminSheetMsg').textContent = '✅ Sheet config saved.';
-    setTimeout(() => { $('adminSheetMsg').textContent = ''; }, 3000);
-  });
-
-  $('adminTestSave').addEventListener('click', async () => {
-    const result = $('adminSheetTestResult');
-    result.textContent = '📤 Sending test config...';
-    result.className = 'pt-result';
-    const cfg = getSheetConfig();
-    if (!cfg.url || cfg.url.includes('YOUR_SCRIPT_ID')) {
-      result.textContent = '❌ Configure Webhook URL first.';
-      result.className = 'pt-result error';
-      return;
-    }
-    const testCfg = getExamConfig();
-    const res = await publishConfigToCloud(testCfg);
-    if (res.success) {
-      result.textContent = '✅ Config sent! Check the Config tab in your Google Sheet.';
-      result.className = 'pt-result ok';
-    } else {
-      result.textContent = '❌ Failed: ' + res.error;
-      result.className = 'pt-result error';
-    }
-  });
-
-  $('adminTestFetch').addEventListener('click', async () => {
-    const result = $('adminSheetTestResult');
-    result.textContent = '📥 Fetching config from cloud...';
-    result.className = 'pt-result';
-    const res = await fetchConfigFromCloud();
-    if (res.success) {
-      if (res.config) {
-        result.innerHTML = `✅ Cloud config received!<br>
-          <small>Tasks: ${res.config.tasks?.length || 0} · Open: ${res.config.isOpen} · Time: ${res.config.timeLimitMinutes}min</small>`;
-        result.className = 'pt-result ok';
-      } else {
-        result.textContent = '⚠️ No config in cloud yet. Publish first.';
-        result.className = 'pt-result warn';
-      }
-    } else {
-      result.textContent = '❌ Fetch failed: ' + res.error;
-      result.className = 'pt-result error';
-    }
-  });
-
   // STUDENT RESULTS
   async function refreshResultsTable() {
     const body = $('adminResultsTableBody');
@@ -812,23 +722,25 @@ window.initAdminPage = function () {
   // INIT
   function init() {
     refreshExamStatusUI();
-    loadSheetConfigToInputs();
     renderTaskList();
     showConfigFields(taskType.value);
     refreshTokenUI();
+
+    // Show webhook URL status
+    const cfg = getSheetConfig();
+    const urlEl = $('systemWebhookUrl');
+    if (urlEl) {
+      urlEl.textContent = cfg.url
+        ? (cfg.url.substring(0, 60) + '...')
+        : 'Not configured';
+    }
+    const statusEl = $('systemSheetStatus');
+    if (statusEl) {
+      statusEl.textContent = cfg.url ? 'Configured ✅' : 'Not Configured ❌';
+    }
+
     $('adminResultsTableBody').innerHTML =
       '<tr><td colspan="7" class="empty-row">Click "Refresh from Cloud" to load.</td></tr>';
-
-    // Auto-poll for config changes from other admins
-    setInterval(async () => {
-      const res = await syncConfigFromCloud();
-      if (res.success && res.config) {
-        const previewTasks = $('previewTasks');
-        if (previewTasks && previewTasks.textContent !== String(res.config.tasks.length)) {
-          refreshExamStatusUI();
-        }
-      }
-    }, 20000);
   }
 
   if (document.readyState === 'loading') {
@@ -1294,7 +1206,6 @@ window.initStudentPage = function () {
       window.refreshExamScreen();
     });
 
-    // AUTO-POLL CLOUD CONFIG
     async function pollCloudConfig() {
       if (examActive || examFinished) return;
       const assessTab = $('assessTab');
@@ -2174,7 +2085,7 @@ window.initStudentPage = function () {
 
       const sheetCfg = getSheetConfig();
       const syncStatus = $('sheetSyncStatus');
-      if (sheetCfg.url && !sheetCfg.url.includes('YOUR_SCRIPT_ID') && sheetCfg.autoSync) {
+      if (sheetCfg.url && sheetCfg.autoSync) {
         syncStatus.textContent = '☁️ Syncing to cloud...';
         syncStatus.className = 'pt-result';
         const result = await submitToGoogleSheet(examRecord);
