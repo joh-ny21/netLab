@@ -3,6 +3,7 @@
    JSONP for cross-device config sync (CORS-free)
    Clean canvas handling to prevent tool glitches
    Reliable Google Sheets recording
+   Full T568A and T568B support
    ============================================================ */
 
 const ADMIN_PASSWORD = 'admin123';
@@ -10,8 +11,34 @@ const ADMIN_PASSWORD = 'admin123';
 // ============================================================
 // ⚙️ HARDCODED BACKEND — PASTE YOUR APPS SCRIPT URL HERE
 // ============================================================
-const HARDCODED_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbxJZgK5_3fIbD2qxaZ2GOT1JO7gyNGSwmSx5px1Ex-9K5E4ZmKG9W6hU-6OagQBuRPhew/exec';
-const HARDCODED_TOKEN = '123-456-789';
+const HARDCODED_WEBHOOK_URL = 'PASTE_YOUR_APPS_SCRIPT_URL_HERE';
+const HARDCODED_TOKEN = '';
+
+// ============================================================
+// WIRING STANDARDS
+// ============================================================
+const WIRE_STANDARDS = {
+  A: [
+    { name: 'White-Green', hex: '#3CB371', stripe: true, base: '#3CB371', second: '#FFFFFF' },
+    { name: 'Green', hex: '#3CB371', stripe: false },
+    { name: 'White-Orange', hex: '#F5A623', stripe: true, base: '#F5A623', second: '#FFFFFF' },
+    { name: 'Blue', hex: '#1E90FF', stripe: false },
+    { name: 'White-Blue', hex: '#1E90FF', stripe: true, base: '#1E90FF', second: '#FFFFFF' },
+    { name: 'Orange', hex: '#F5A623', stripe: false },
+    { name: 'White-Brown', hex: '#8B4513', stripe: true, base: '#8B4513', second: '#FFFFFF' },
+    { name: 'Brown', hex: '#8B4513', stripe: false }
+  ],
+  B: [
+    { name: 'White-Orange', hex: '#F5A623', stripe: true, base: '#F5A623', second: '#FFFFFF' },
+    { name: 'Orange', hex: '#F5A623', stripe: false },
+    { name: 'White-Green', hex: '#3CB371', stripe: true, base: '#3CB371', second: '#FFFFFF' },
+    { name: 'Blue', hex: '#1E90FF', stripe: false },
+    { name: 'White-Blue', hex: '#1E90FF', stripe: true, base: '#1E90FF', second: '#FFFFFF' },
+    { name: 'Green', hex: '#3CB371', stripe: false },
+    { name: 'White-Brown', hex: '#8B4513', stripe: true, base: '#8B4513', second: '#FFFFFF' },
+    { name: 'Brown', hex: '#8B4513', stripe: false }
+  ]
+};
 
 // ==================== STORAGE HELPERS ====================
 function getSheetConfig() {
@@ -151,14 +178,13 @@ async function syncConfigFromCloud() {
   return { success: true, config: merged };
 }
 
-// ==================== SAVE RESULT (RELIABLE) ====================
+// ==================== SAVE RESULT ====================
 async function submitToGoogleSheet(record) {
   const cfg = getSheetConfig();
   if (!cfg.url) {
     return { success: false, error: 'No webhook URL configured' };
   }
 
-  // Trim details to fit URL length limits
   let details = record.details || {};
   let detailsStr = JSON.stringify(details);
   if (detailsStr.length > 1500) {
@@ -188,7 +214,6 @@ async function submitToGoogleSheet(record) {
     details: details
   };
 
-  // Primary method: JSONP GET
   try {
     const params = {
       action: 'save_result',
@@ -207,7 +232,6 @@ async function submitToGoogleSheet(record) {
     console.warn('⚠️ JSONP save failed:', err.message);
   }
 
-  // Fallback: POST with no-cors
   try {
     const fallbackPayload = { ...payload, action: 'save_result' };
     if (cfg.token) fallbackPayload.token = cfg.token;
@@ -491,6 +515,30 @@ window.initAdminPage = function () {
   taskType.addEventListener('change', () => showConfigFields(taskType.value));
   showConfigFields(taskType.value);
 
+  // Update crimp hint dynamically
+  function updateCrimpHint() {
+    const cableEl = $('crimpCableType');
+    const stdEl = $('crimpStandard');
+    const hintEl = $('crimpHint');
+    if (!cableEl || !stdEl || !hintEl) return;
+
+    const cable = cableEl.value;
+    const std = stdEl.value;
+    const other = std === 'A' ? 'B' : 'A';
+
+    if (cable === 'straight') {
+      hintEl.textContent = `T568${std} (this end) → T568${std} (other end)`;
+    } else {
+      hintEl.textContent = `T568${std} (this end) → T568${other} (other end)`;
+    }
+  }
+
+  const crimpCableTypeEl = $('crimpCableType');
+  const crimpStandardEl = $('crimpStandard');
+  if (crimpCableTypeEl) crimpCableTypeEl.addEventListener('change', updateCrimpHint);
+  if (crimpStandardEl) crimpStandardEl.addEventListener('change', updateCrimpHint);
+  updateCrimpHint();
+
   function renderTaskList() {
     const list = $('taskList');
     if (!list) return;
@@ -506,11 +554,22 @@ window.initAdminPage = function () {
     pendingTasks.forEach((t, i) => {
       const div = document.createElement('div');
       div.className = 'task-item';
+      let extra = '';
+      if (t.type === 'crimp') {
+        const cable = t.cableType === 'crossover' ? 'Crossover' : 'Straight';
+        const std = t.crimpStandard || 'B';
+        const other = std === 'A' ? 'B' : 'A';
+        if (t.cableType === 'crossover') {
+          extra = ` · T568${std} → T568${other}`;
+        } else {
+          extra = ` · T568${std}`;
+        }
+      }
       div.innerHTML = `
         <span class="ti-icon">${iconMap[t.type] || '📝'}</span>
         <div class="ti-body">
           <div class="ti-title">${i + 1}. ${t.title}</div>
-          <div class="ti-meta">Type: ${t.type}</div>
+          <div class="ti-meta">Type: ${t.type}${extra}</div>
         </div>
         <span class="ti-points">${t.points} pts</span>
         <button class="ti-remove" data-idx="${i}" type="button">✖</button>
@@ -535,6 +594,7 @@ window.initAdminPage = function () {
       case 'crimp':
         task.title = $('crimpTitle').value.trim() || 'Crimping Task';
         task.cableType = $('crimpCableType').value;
+        task.crimpStandard = ($('crimpStandard') && $('crimpStandard').value) || 'B';
         break;
       case 'topology':
         task.title = $('topoTitle').value.trim() || 'Build Topology';
@@ -592,19 +652,28 @@ window.initAdminPage = function () {
     updateExamPreview();
   });
 
+  // PRESETS
   document.querySelectorAll('[data-preset]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const p = btn.dataset.preset;
       const now = Date.now();
       if (p === 'basic') {
         pendingTasks = [
-          { id: now + 1, type: 'crimp', title: 'Terminate a Straight-Through Cable', cableType: 'straight', points: 20 },
-          { id: now + 2, type: 'crimp', title: 'Terminate a Crossover Cable', cableType: 'crossover', points: 20 },
+          { id: now + 1, type: 'crimp', title: 'Terminate a Straight-Through T568B Cable', cableType: 'straight', crimpStandard: 'B', points: 20 },
+          { id: now + 2, type: 'crimp', title: 'Terminate a Crossover T568B→T568A Cable', cableType: 'crossover', crimpStandard: 'B', points: 20 },
           { id: now + 3, type: 'subnet', title: 'Calculate Subnet /24', ip: '192.168.1.0', cidr: 24, points: 15 }
+        ];
+      } else if (p === 'mixed') {
+        pendingTasks = [
+          { id: now + 1, type: 'crimp', title: 'Terminate a Straight-Through T568A Cable', cableType: 'straight', crimpStandard: 'A', points: 15 },
+          { id: now + 2, type: 'crimp', title: 'Terminate a Straight-Through T568B Cable', cableType: 'straight', crimpStandard: 'B', points: 15 },
+          { id: now + 3, type: 'crimp', title: 'Terminate a Crossover T568A→T568B Cable', cableType: 'crossover', crimpStandard: 'A', points: 20 },
+          { id: now + 4, type: 'crimp', title: 'Terminate a Crossover T568B→T568A Cable', cableType: 'crossover', crimpStandard: 'B', points: 20 },
+          { id: now + 5, type: 'subnet', title: 'Calculate Subnet /26', ip: '192.168.10.0', cidr: 26, points: 15 }
         ];
       } else if (p === 'network') {
         pendingTasks = [
-          { id: now + 1, type: 'crimp', title: 'Terminate a Straight-Through Cable', cableType: 'straight', points: 15 },
+          { id: now + 1, type: 'crimp', title: 'Terminate a Straight-Through T568B Cable', cableType: 'straight', crimpStandard: 'B', points: 15 },
           { id: now + 2, type: 'topology', title: 'Build a Star Topology', targetTopology: 'star', minDevices: 4, points: 20 },
           { id: now + 3, type: 'subnet', title: 'Calculate Subnet /26', ip: '192.168.10.0', cidr: 26, points: 15 },
           { id: now + 4, type: 'ping', title: 'Set up Internet Ping', target: '8.8.8.8', points: 15 },
@@ -612,8 +681,8 @@ window.initAdminPage = function () {
         ];
       } else if (p === 'advanced') {
         pendingTasks = [
-          { id: now + 1, type: 'crimp', title: 'Terminate a Straight-Through Cable', cableType: 'straight', points: 10 },
-          { id: now + 2, type: 'crimp', title: 'Terminate a Crossover Cable', cableType: 'crossover', points: 10 },
+          { id: now + 1, type: 'crimp', title: 'Terminate a Straight-Through T568A Cable', cableType: 'straight', crimpStandard: 'A', points: 10 },
+          { id: now + 2, type: 'crimp', title: 'Terminate a Crossover T568A→T568B Cable', cableType: 'crossover', crimpStandard: 'A', points: 10 },
           { id: now + 3, type: 'topology', title: 'Build a Full Mesh Topology', targetTopology: 'fullmesh', minDevices: 4, points: 15 },
           { id: now + 4, type: 'subnet', title: 'Calculate Subnet /28', ip: '10.0.0.0', cidr: 28, points: 10 },
           { id: now + 5, type: 'firewall', title: 'Configure SSH-Only Firewall', requiredRule: 'allow-ssh', points: 15 },
@@ -777,6 +846,7 @@ window.initAdminPage = function () {
     renderTaskList();
     showConfigFields(taskType.value);
     refreshTokenUI();
+    updateCrimpHint();
 
     const cfg = getSheetConfig();
     const urlEl = $('systemWebhookUrl');
@@ -840,20 +910,8 @@ window.initStudentPage = function () {
 
   // ==================== CRIMPING PRACTICE ====================
   (function () {
-    const STANDARDS = {
-      B: [
-        { name: 'White-Orange', hex: '#F5A623', stripe: true, base: '#F5A623', second: '#FFFFFF' },
-        { name: 'Orange', hex: '#F5A623', stripe: false },
-        { name: 'White-Green', hex: '#3CB371', stripe: true, base: '#3CB371', second: '#FFFFFF' },
-        { name: 'Blue', hex: '#1E90FF', stripe: false },
-        { name: 'White-Blue', hex: '#1E90FF', stripe: true, base: '#1E90FF', second: '#FFFFFF' },
-        { name: 'Green', hex: '#3CB371', stripe: false },
-        { name: 'White-Brown', hex: '#8B4513', stripe: true, base: '#8B4513', second: '#FFFFFF' },
-        { name: 'Brown', hex: '#8B4513', stripe: false }
-      ]
-    };
-
     let cableType = 'straight';
+    let practiceStd = 'B'; // Default practice standard
     let shuffledPalette = [];
     let slotWires = new Array(8).fill(null);
     let selectedSlot = -1;
@@ -861,6 +919,10 @@ window.initStudentPage = function () {
     let isCrimped = false;
     let stats = JSON.parse(localStorage.getItem('crimp_stats_v2') ||
       '{"attempts":0,"passed":0,"failed":0,"scores":[]}');
+
+    function getCurrentSequence() {
+      return WIRE_STANDARDS[practiceStd];
+    }
 
     function shuffleArray(arr) {
       const a = arr.slice();
@@ -881,10 +943,24 @@ window.initStudentPage = function () {
       } else $('statAvgScore').textContent = '—';
     }
 
+    function updatePracticeTitle() {
+      const cable = cableType === 'straight' ? 'STRAIGHT-THROUGH' : 'CROSSOVER';
+      const std = `T568${practiceStd}`;
+      const other = practiceStd === 'A' ? 'B' : 'A';
+      if (cableType === 'straight') {
+        $('rj45Title').textContent = `RJ45 CONNECTOR — ${std} ${cable}`;
+        $('taskBanner').innerHTML = `<strong>TASK:</strong> Terminate a <strong>Straight-Through</strong> cable using <strong>${std}</strong> on both ends.`;
+      } else {
+        $('rj45Title').textContent = `RJ45 CONNECTOR — ${std} → T568${other} ${cable}`;
+        $('taskBanner').innerHTML = `<strong>TASK:</strong> Terminate a <strong>Crossover</strong> cable — this end <strong>${std}</strong>, other end <strong>T568${other}</strong>.`;
+      }
+    }
+
     function buildPalette() {
       const wp = $('wirePalette');
       wp.innerHTML = '';
-      shuffledPalette = shuffleArray(STANDARDS.B);
+      const seq = getCurrentSequence();
+      shuffledPalette = shuffleArray(seq);
       shuffledPalette.forEach((wire, idx) => {
         const item = document.createElement('div');
         item.className = 'palette-item';
@@ -1028,6 +1104,7 @@ window.initStudentPage = function () {
       $('feedbackMsg').textContent = 'Pick a wire color, then click a slot.';
       $('resultOutputBody').className = 'result-output-body';
       $('resultOutputBody').innerHTML = '<span class="result-placeholder">Awaiting crimp & test...</span>';
+      updatePracticeTitle();
       buildPalette();
     }
 
@@ -1054,10 +1131,11 @@ window.initStudentPage = function () {
 
     function checkCable() {
       if (!isCrimped) { $('feedbackMsg').textContent = '⚠️ Crimp first.'; return; }
+      const seq = getCurrentSequence();
       let correct = 0;
       const results = [];
       for (let i = 0; i < 8; i++) {
-        const ok = slotWires[i] && slotWires[i].name === STANDARDS.B[i].name;
+        const ok = slotWires[i] && slotWires[i].name === seq[i].name;
         if (ok) correct++;
         results.push({ pin: i + 1, ok });
       }
@@ -1071,18 +1149,20 @@ window.initStudentPage = function () {
       $('stepVerify').classList.add('done');
       $('stepVerify').classList.remove('active');
       const cableLabel = cableType === 'straight' ? 'Straight-Through' : 'Crossover';
+      const stdLabel = `T568${practiceStd}`;
 
       if (allCorrect) {
-        $('statusMessage').textContent = `✅ CORRECT — ${cableLabel} cable!`;
+        $('statusMessage').textContent = `✅ CORRECT — ${stdLabel} ${cableLabel}!`;
         $('statusMessage').className = 'status-area ok';
-        $('feedbackMsg').textContent = `All 8 wires match T568B.`;
+        $('feedbackMsg').textContent = `All 8 wires match ${stdLabel}.`;
         $('resultOutputBody').className = 'result-output-body pass';
         $('resultOutputBody').innerHTML = `
           <div><span class="result-icon">✅</span>
           <div>CORRECT CONNECTION</div>
           <div class="result-details">
             <strong>Cable Type:</strong> ${cableLabel}<br>
-            <strong>Wired End:</strong> T568B (8/8)<br>
+            <strong>Standard:</strong> ${stdLabel}<br>
+            <strong>Wired End:</strong> 8/8 correct<br>
             <strong>Status:</strong> Link established ✓
           </div></div>`;
       } else {
@@ -1096,7 +1176,8 @@ window.initStudentPage = function () {
           <div>INCORRECT CONNECTION</div>
           <div class="result-details">
             <strong>Cable Type:</strong> ${cableLabel}<br>
-            <strong>Wired End:</strong> T568B (${correct}/8)<br>
+            <strong>Standard:</strong> ${stdLabel}<br>
+            <strong>Wired End:</strong> ${correct}/8 correct<br>
             <strong>Wrong Pins:</strong> ${wrongPins}<br>
             <strong>Status:</strong> No link ✗
           </div></div>`;
@@ -1108,13 +1189,18 @@ window.initStudentPage = function () {
       cableType = type;
       $('cableStraight').classList.toggle('active', type === 'straight');
       $('cableCrossover').classList.toggle('active', type === 'crossover');
-      if (type === 'straight') {
-        $('rj45Title').textContent = 'RJ45 CONNECTOR — T568B STRAIGHT-THROUGH';
-        $('taskBanner').innerHTML = '<strong>TASK:</strong> Terminate a <strong>Straight-Through</strong> cable using <strong>T568B</strong>.';
-      } else {
-        $('rj45Title').textContent = 'RJ45 CONNECTOR — T568B → T568A CROSSOVER';
-        $('taskBanner').innerHTML = '<strong>TASK:</strong> Terminate a <strong>Crossover</strong> cable.';
-      }
+      updatePracticeTitle();
+      resetAll();
+    }
+
+    function setPracticeStd(std) {
+      if (isCrimped) { $('feedbackMsg').textContent = 'Reset first.'; return; }
+      practiceStd = std;
+      const elA = $('cableStdA');
+      const elB = $('cableStdB');
+      if (elA) elA.classList.toggle('active', std === 'A');
+      if (elB) elB.classList.toggle('active', std === 'B');
+      updatePracticeTitle();
       resetAll();
     }
 
@@ -1129,6 +1215,11 @@ window.initStudentPage = function () {
     $('cableStraight').addEventListener('click', () => setCableType('straight'));
     $('cableCrossover').addEventListener('click', () => setCableType('crossover'));
 
+    const stdA = $('cableStdA');
+    const stdB = $('cableStdB');
+    if (stdA) stdA.addEventListener('click', () => setPracticeStd('A'));
+    if (stdB) stdB.addEventListener('click', () => setPracticeStd('B'));
+
     buildPins();
     buildWireSlots();
     buildPalette();
@@ -1138,19 +1229,6 @@ window.initStudentPage = function () {
 
   // ==================== ASSESSMENT EXAM ====================
   (function () {
-    const STANDARDS = {
-      B: [
-        { name: 'White-Orange', hex: '#F5A623', stripe: true, base: '#F5A623', second: '#FFFFFF' },
-        { name: 'Orange', hex: '#F5A623', stripe: false },
-        { name: 'White-Green', hex: '#3CB371', stripe: true, base: '#3CB371', second: '#FFFFFF' },
-        { name: 'Blue', hex: '#1E90FF', stripe: false },
-        { name: 'White-Blue', hex: '#1E90FF', stripe: true, base: '#1E90FF', second: '#FFFFFF' },
-        { name: 'Green', hex: '#3CB371', stripe: false },
-        { name: 'White-Brown', hex: '#8B4513', stripe: true, base: '#8B4513', second: '#FFFFFF' },
-        { name: 'Brown', hex: '#8B4513', stripe: false }
-      ]
-    };
-
     let examActive = false;
     let examFinished = false;
     let examTasks = [];
@@ -1172,6 +1250,7 @@ window.initStudentPage = function () {
     let currentLab = null;
     let lastConfigHash = '';
     let pollTimer = null;
+    let currentCrimpStandard = 'B';
 
     function shuffleArray(arr) {
       const a = arr.slice();
@@ -1203,7 +1282,7 @@ window.initStudentPage = function () {
       } catch (e) { return ''; }
     }
 
-    // ============ LAB HELPERS (FIXED) ============
+    // ============ LAB HELPERS ============
     const LAB_STYLE = {
       pc: { icon: '💻', color: '#5a6a7a', label: 'PC' },
       server: { icon: '🖥️', color: '#7a6a9a', label: 'Server' },
@@ -1216,7 +1295,6 @@ window.initStudentPage = function () {
 
     function createLab(canvasId, deviceTypes) {
       const canvas = $(canvasId);
-      // 🔧 FIX: Clone canvas to remove old listeners
       const cloned = canvas.cloneNode(true);
       canvas.parentNode.replaceChild(cloned, canvas);
 
@@ -1448,7 +1526,6 @@ window.initStudentPage = function () {
 
     function setupExamLabToolbar(deviceTypes) {
       const bar = $('examLabDeviceBar');
-      // 🔧 FIX: Clone bar to remove old listeners
       const cloned = bar.cloneNode(true);
       bar.parentNode.replaceChild(cloned, bar);
 
@@ -1469,7 +1546,6 @@ window.initStudentPage = function () {
         cloned.appendChild(btn);
       });
 
-      // Reset tool buttons
       const toolsBar = $('examLabToolsBar');
       if (toolsBar) {
         const toolsClone = toolsBar.cloneNode(true);
@@ -1784,23 +1860,39 @@ window.initStudentPage = function () {
 
     function loadCrimpTask(t) {
       $('examCrimpUI').style.display = 'flex';
+
+      const primaryStd = t.crimpStandard || 'B';
+      const otherStd = t.cableType === 'crossover'
+        ? (primaryStd === 'A' ? 'B' : 'A')
+        : primaryStd;
+
+      currentCrimpStandard = primaryStd;
+
+      const cableLabel = t.cableType === 'crossover' ? 'Crossover' : 'Straight-Through';
+
       $('examTaskDesc').innerHTML =
         `<strong>${t.title}</strong> (${t.points} pts)<br>
         <span style="font-size:0.85rem; color:#8ba9bc;">
-          Cable: <strong>${t.cableType === 'crossover' ? 'Crossover' : 'Straight-Through'}</strong>
+          Cable: <strong>${cableLabel}</strong> ·
+          This end: <strong>T568${primaryStd}</strong>
+          ${t.cableType === 'crossover' ? ` · Other end: <strong>T568${otherStd}</strong>` : ''}
         </span>`;
+
       slotWires = new Array(8).fill(null);
       selectedSlot = -1;
       selectedPaletteIdx = 0;
       buildExamPins();
       buildExamWireSlots();
-      buildExamPalette();
+      buildExamPalette(primaryStd);
     }
 
-    function buildExamPalette() {
+    function buildExamPalette(std) {
+      std = std || 'B';
       const wp = $('examWirePalette');
       wp.innerHTML = '';
-      shuffledPalette = shuffleArray(STANDARDS.B);
+      const seq = WIRE_STANDARDS[std] || WIRE_STANDARDS.B;
+      shuffledPalette = shuffleArray(seq);
+
       shuffledPalette.forEach((wire, idx) => {
         const item = document.createElement('div');
         item.className = 'palette-item';
@@ -1823,6 +1915,7 @@ window.initStudentPage = function () {
         wp.appendChild(item);
       });
     }
+
     function buildExamPins() {
       const pc = $('examPinContainer');
       pc.innerHTML = '';
@@ -1834,6 +1927,7 @@ window.initStudentPage = function () {
         pc.appendChild(pin);
       }
     }
+
     function buildExamWireSlots() {
       const wc = $('examWireSlotContainer');
       wc.innerHTML = '';
@@ -1858,6 +1952,7 @@ window.initStudentPage = function () {
         wc.appendChild(row);
       }
     }
+
     function updateExamSlotVisual(slotIdx) {
       const ind = document.querySelector(`#examWireSlotContainer .wire-indicator[data-slot-index="${slotIdx}"]`);
       if (!ind) return;
@@ -1877,6 +1972,7 @@ window.initStudentPage = function () {
         lbl.textContent = '';
       }
     }
+
     function selectExamSlot(slotIdx) {
       selectedSlot = slotIdx;
       document.querySelectorAll('#examWireSlotContainer .wire-indicator').forEach((el, idx) => {
@@ -1889,25 +1985,39 @@ window.initStudentPage = function () {
         pin.classList.toggle('selected', idx === slotIdx);
       });
     }
+
     function placeExamWire(slotIdx, paletteIdx) {
       const wt = shuffledPalette[paletteIdx];
       if (!wt) return;
       slotWires[slotIdx] = { ...wt };
       updateExamSlotVisual(slotIdx);
     }
+
     function submitCrimpTask(t) {
       if (slotWires.some((w) => w === null)) {
         $('examStatusMsg').textContent = '⚠️ Some slots are empty.';
         $('examStatusMsg').className = 'exam-status-area error';
         return;
       }
+
+      const primaryStd = t.crimpStandard || 'B';
+      const expectedSeq = WIRE_STANDARDS[primaryStd] || WIRE_STANDARDS.B;
+
       let correct = 0;
       for (let i = 0; i < 8; i++) {
-        if (slotWires[i] && slotWires[i].name === STANDARDS.B[i].name) correct++;
+        if (slotWires[i] && slotWires[i].name === expectedSeq[i].name) correct++;
       }
+
       const allCorrect = correct === 8;
       const earned = allCorrect ? t.points : Math.round((correct / 8) * t.points);
-      finishTask(t, earned, allCorrect, allCorrect ? 'Perfect crimp!' : `${correct}/8 wires correct`);
+      const stdLabel = `T568${primaryStd}`;
+
+      finishTask(
+        t,
+        earned,
+        allCorrect,
+        allCorrect ? `Perfect! Wired correctly as ${stdLabel}` : `${correct}/8 wires match ${stdLabel}`
+      );
     }
 
     function loadTopoTask(t) {
