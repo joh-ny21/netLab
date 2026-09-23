@@ -6,15 +6,34 @@
 const ADMIN_PASSWORD = 'admin123';
 
 // ==================== STORAGE HELPERS ====================
+// ============================================================
+// ⚙️ HARDCODED DEFAULT — Used when localStorage has no config
+// This ensures every device/browser automatically connects
+// to your Google Apps Script backend without manual setup.
+// ============================================================
+const DEFAULT_SHEET_CONFIG = {
+  url: 'https://script.google.com/macros/s/AKfycbxRU_OhCZXKs9bbOesJAAemzQgdNsb85gTcmXetFx2BkBqrkTgOJk4xL7fNpiMAXpAdVg/exec',  // ← PASTE YOUR URL HERE
+  token: '',                                                  // ← Optional secret token
+  autoSync: true
+};
+
 function getSheetConfig() {
   try {
-    const s = JSON.parse(localStorage.getItem('sheet_config') || '{}');
-    return { url: s.url || '', token: s.token || '', autoSync: s.autoSync !== false };
+    const s = JSON.parse(localStorage.getItem('sheet_config') || 'null');
+    // If localStorage has no config, fall back to hardcoded default
+    if (!s || !s.url) return { ...DEFAULT_SHEET_CONFIG };
+    
+    // Merge: localStorage overrides default (admin can still customize)
+    return {
+      url: s.url || DEFAULT_SHEET_CONFIG.url,
+      token: s.token || DEFAULT_SHEET_CONFIG.token,
+      autoSync: s.autoSync !== false
+    };
   } catch (e) {
-    return { url: '', token: '', autoSync: true };
+    return { ...DEFAULT_SHEET_CONFIG };
   }
-}
-function saveSheetConfig(cfg) {
+   
+}function saveSheetConfig(cfg) {
   localStorage.setItem('sheet_config', JSON.stringify(cfg));
 }
 
