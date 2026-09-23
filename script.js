@@ -9,7 +9,7 @@ const ADMIN_PASSWORD = 'admin123';
 // ⚙️ HARDCODED BACKEND — PASTE YOUR APPS SCRIPT URL HERE
 // This makes every device work without any manual setup.
 // ============================================================
-const HARDCODED_WEBHOOK_URL = 'PASTE_YOUR_APPS_SCRIPT_URL_HERE';
+const HARDCODED_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbxsWNEpst8JujBR7d0bD3HuoiWDC935Ipazoc-5fiY-0goliqJMA90BuOYXmtinazUvgw/exec';
 const HARDCODED_TOKEN = '';
 
 // ==================== STORAGE HELPERS ====================
