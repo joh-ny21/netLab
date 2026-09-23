@@ -451,7 +451,7 @@
 
     document.getElementById('userName').textContent = user.name || 'Student';
 
-    // Sync exam config from cloud before initializing
+    // Sync exam config from cloud BEFORE initializing
     try {
       if (typeof syncConfigFromCloud === 'function') {
         await syncConfigFromCloud();
