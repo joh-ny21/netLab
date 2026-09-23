@@ -11,8 +11,8 @@ const ADMIN_PASSWORD = 'admin123';
 // ============================================================
 // ⚙️ HARDCODED BACKEND — PASTE YOUR APPS SCRIPT URL HERE
 // ============================================================
-const HARDCODED_WEBHOOK_URL = 'PASTE_YOUR_APPS_SCRIPT_URL_HERE';
-const HARDCODED_TOKEN = '';
+const HARDCODED_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbwE6eIQMIzeqXLCnLo2oEWLGAwWrW_yj5Q9F4nNQu0Ep_JP0I4uCs2FH3i6ussUqQM9JA/exec';
+const HARDCODED_TOKEN = '123-456-789';
 
 // ============================================================
 // WIRING STANDARDS
