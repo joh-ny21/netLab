@@ -183,7 +183,7 @@
           <div class="exam-lab-wrapper" id="examLabUI" style="display:none;">
             <canvas id="examTopoCanvas" width="700" height="380"></canvas>
             <div class="exam-lab-toolbar" id="examLabDeviceBar"></div>
-            <div class="exam-lab-tools">
+            <div class="exam-lab-tools" id="examLabToolsBar">
               <button class="tool-btn active" data-exam-tool="connect" type="button">🔗 Connect</button>
               <button class="tool-btn" data-exam-tool="select" type="button">🖱️ Select</button>
               <button class="tool-btn" data-exam-tool="delete" type="button">🗑️ Delete</button>
@@ -451,7 +451,6 @@
 
     document.getElementById('userName').textContent = user.name || 'Student';
 
-    // Sync exam config from cloud BEFORE initializing
     try {
       if (typeof syncConfigFromCloud === 'function') {
         await syncConfigFromCloud();
