@@ -1,10 +1,11 @@
 /* ============================================================
    NETWORK SIMULATOR — SHARED LOGIC
-   JSONP for cross-device config sync (CORS-free)
-   Clean canvas handling to prevent tool glitches
-   Reliable Google Sheets recording
-   Full T568A and T568B support
-   Accurate scoring with deduplication
+   Student page fully fixed:
+   - Single clean toolbar per lab task (no duplicates)
+   - All devices always available
+   - Last selected tool/device remembered
+   - Accurate scoring (clamped 0-100)
+   - Clean canvas per task
    ============================================================ */
 
 const ADMIN_PASSWORD = 'admin123';
@@ -47,11 +48,9 @@ function getSheetConfig() {
   try {
     stored = JSON.parse(localStorage.getItem('sheet_config') || '{}');
   } catch (e) { stored = {}; }
-
   const url = (stored.url && stored.url.trim()) || HARDCODED_WEBHOOK_URL || '';
   const token = (stored.token && stored.token.trim()) || HARDCODED_TOKEN || '';
   const autoSync = stored.autoSync !== false;
-
   return { url, token, autoSync };
 }
 
@@ -81,19 +80,16 @@ function saveExamConfig(cfg) {
   localStorage.setItem('exam_config', JSON.stringify(cfg));
 }
 
-// ==================== JSONP (CORS-FREE GET) ====================
+// ==================== JSONP ====================
 let _jsonpCounter = 0;
-
 function jsonpRequest(baseUrl, params = {}, timeoutMs = 15000) {
   return new Promise((resolve, reject) => {
     const callbackName = 'nsJsonp_' + (++_jsonpCounter) + '_' + Date.now();
     const sep = baseUrl.includes('?') ? '&' : '?';
     const query = new URLSearchParams({ ...params, callback: callbackName }).toString();
     const finalUrl = baseUrl + sep + query;
-
     const script = document.createElement('script');
     let done = false;
-
     const cleanup = () => {
       if (done) return;
       done = true;
@@ -101,22 +97,9 @@ function jsonpRequest(baseUrl, params = {}, timeoutMs = 15000) {
       if (script.parentNode) script.parentNode.removeChild(script);
       clearTimeout(timer);
     };
-
-    const timer = setTimeout(() => {
-      cleanup();
-      reject(new Error('JSONP timeout'));
-    }, timeoutMs);
-
-    window[callbackName] = (data) => {
-      cleanup();
-      resolve(data);
-    };
-
-    script.onerror = () => {
-      cleanup();
-      reject(new Error('JSONP script load error'));
-    };
-
+    const timer = setTimeout(() => { cleanup(); reject(new Error('JSONP timeout')); }, timeoutMs);
+    window[callbackName] = (data) => { cleanup(); resolve(data); };
+    script.onerror = () => { cleanup(); reject(new Error('JSONP script load error')); };
     script.src = finalUrl;
     document.head.appendChild(script);
   });
@@ -125,13 +108,10 @@ function jsonpRequest(baseUrl, params = {}, timeoutMs = 15000) {
 // ==================== CLOUD SYNC ====================
 async function publishConfigToCloud(config) {
   const sheetCfg = getSheetConfig();
-  if (!sheetCfg.url) {
-    return { success: false, error: 'No webhook URL configured' };
-  }
+  if (!sheetCfg.url) return { success: false, error: 'No webhook URL configured' };
   try {
     const payload = { action: 'save_config', config: config };
     if (sheetCfg.token) payload.token = sheetCfg.token;
-
     await fetch(sheetCfg.url, {
       method: 'POST',
       mode: 'no-cors',
@@ -146,9 +126,7 @@ async function publishConfigToCloud(config) {
 
 async function fetchConfigFromCloud() {
   const sheetCfg = getSheetConfig();
-  if (!sheetCfg.url) {
-    return { success: false, error: 'No webhook URL configured' };
-  }
+  if (!sheetCfg.url) return { success: false, error: 'No webhook URL configured' };
   try {
     const data = await jsonpRequest(sheetCfg.url, { action: 'get_config' });
     if (!data.success) return { success: false, error: data.error || 'Unknown error' };
@@ -161,10 +139,8 @@ async function fetchConfigFromCloud() {
 async function syncConfigFromCloud() {
   const result = await fetchConfigFromCloud();
   if (!result.success || !result.config) return result;
-
   const localCfg = getExamConfig();
   const cloudCfg = result.config;
-
   const merged = {
     isOpen: !!cloudCfg.isOpen,
     timeLimitMinutes: cloudCfg.timeLimitMinutes || localCfg.timeLimitMinutes,
@@ -173,7 +149,6 @@ async function syncConfigFromCloud() {
     shuffleTasks: cloudCfg.shuffleTasks !== false,
     tasks: Array.isArray(cloudCfg.tasks) ? cloudCfg.tasks : []
   };
-
   localStorage.setItem('exam_config', JSON.stringify(merged));
   console.log('✅ Config synced from cloud:', merged);
   return { success: true, config: merged };
@@ -182,9 +157,7 @@ async function syncConfigFromCloud() {
 // ==================== SAVE RESULT ====================
 async function submitToGoogleSheet(record) {
   const cfg = getSheetConfig();
-  if (!cfg.url) {
-    return { success: false, error: 'No webhook URL configured' };
-  }
+  if (!cfg.url) return { success: false, error: 'No webhook URL configured' };
 
   let details = record.details || {};
   let detailsStr = JSON.stringify(details);
@@ -192,14 +165,9 @@ async function submitToGoogleSheet(record) {
     details = {
       tasks: (details.tasks || []).map(t => ({
         title: String(t.title || '').substring(0, 50),
-        type: t.type,
-        earned: t.earned,
-        points: t.points,
-        passed: t.passed
+        type: t.type, earned: t.earned, points: t.points, passed: t.passed
       })),
-      autoSubmit: details.autoSubmit,
-      reason: details.reason,
-      trimmed: true
+      autoSubmit: details.autoSubmit, reason: details.reason, trimmed: true
     };
   }
 
@@ -216,14 +184,9 @@ async function submitToGoogleSheet(record) {
   };
 
   try {
-    const params = {
-      action: 'save_result',
-      payload: JSON.stringify(payload)
-    };
+    const params = { action: 'save_result', payload: JSON.stringify(payload) };
     if (cfg.token) params.token = cfg.token;
-
     const data = await jsonpRequest(cfg.url, params, 15000);
-
     if (data && data.success) {
       console.log('✅ Result saved to Google Sheets, row:', data.row);
       return { success: true, row: data.row };
@@ -236,10 +199,8 @@ async function submitToGoogleSheet(record) {
   try {
     const fallbackPayload = { ...payload, action: 'save_result' };
     if (cfg.token) fallbackPayload.token = cfg.token;
-
     await fetch(cfg.url, {
-      method: 'POST',
-      mode: 'no-cors',
+      method: 'POST', mode: 'no-cors',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify(fallbackPayload)
     });
@@ -252,9 +213,7 @@ async function submitToGoogleSheet(record) {
 
 async function fetchResultsFromCloud() {
   const sheetCfg = getSheetConfig();
-  if (!sheetCfg.url) {
-    return { success: false, error: 'No webhook URL configured' };
-  }
+  if (!sheetCfg.url) return { success: false, error: 'No webhook URL configured' };
   try {
     const data = await jsonpRequest(sheetCfg.url, { action: 'list_results' });
     if (!data.success) return { success: false, error: data.error || 'Unknown' };
@@ -311,7 +270,6 @@ async function fetchResultsFromCloud() {
   }
 
   setRole('student');
-
   roleStudent.addEventListener('click', (e) => { e.preventDefault(); setRole('student'); });
   roleAdmin.addEventListener('click', (e) => { e.preventDefault(); setRole('admin'); });
   loginBtn.addEventListener('click', handleLogin);
@@ -374,7 +332,6 @@ window.initAdminPage = function () {
     document.querySelectorAll('.admin-panel').forEach((p) => p.classList.remove('active'));
     const target = $('panel' + panel.charAt(0).toUpperCase() + panel.slice(1));
     if (target) target.classList.add('active');
-
     if (panel === 'examControl') refreshExamStatusUI();
     if (panel === 'taskBuilder') renderTaskList();
     if (panel === 'retakeToken') refreshTokenUI();
@@ -413,7 +370,6 @@ window.initAdminPage = function () {
     const tl = parseInt($('adminTimeLimit').value) || cfg.timeLimitMinutes;
     const pt = parseInt($('adminPassThreshold').value) || cfg.passThreshold;
     const mv = parseInt($('adminMaxViolations').value) || cfg.maxViolations;
-
     $('previewTime').textContent = tl + ':00';
     $('previewTasks').textContent = cfg.tasks.length;
     $('previewPass').textContent = pt + '%';
@@ -474,7 +430,6 @@ window.initAdminPage = function () {
     saveExamConfig(cfg);
     refreshExamStatusUI();
     $('adminConfigMsg').textContent = '☁️ Publishing exam to cloud...';
-
     const result = await publishConfigToCloud(cfg);
     if (result.success) {
       $('adminConfigMsg').textContent = '✅ Exam OPEN and published to all devices.';
@@ -490,7 +445,6 @@ window.initAdminPage = function () {
     saveExamConfig(cfg);
     refreshExamStatusUI();
     $('adminConfigMsg').textContent = '☁️ Closing exam on all devices...';
-
     const result = await publishConfigToCloud(cfg);
     if (result.success) {
       $('adminConfigMsg').textContent = '🔒 Exam LOCKED and synced to all devices.';
@@ -521,11 +475,9 @@ window.initAdminPage = function () {
     const stdEl = $('crimpStandard');
     const hintEl = $('crimpHint');
     if (!cableEl || !stdEl || !hintEl) return;
-
     const cable = cableEl.value;
     const std = stdEl.value;
     const other = std === 'A' ? 'B' : 'A';
-
     if (cable === 'straight') {
       hintEl.textContent = `T568${std} (this end) → T568${std} (other end)`;
     } else {
@@ -556,7 +508,6 @@ window.initAdminPage = function () {
       div.className = 'task-item';
       let extra = '';
       if (t.type === 'crimp') {
-        const cable = t.cableType === 'crossover' ? 'Crossover' : 'Straight';
         const std = t.crimpStandard || 'B';
         const other = std === 'A' ? 'B' : 'A';
         if (t.cableType === 'crossover') {
@@ -632,7 +583,6 @@ window.initAdminPage = function () {
     saveExamConfig(cfg);
     updateExamPreview();
     $('taskListMsg').textContent = '☁️ Saving and publishing tasks...';
-
     const result = await publishConfigToCloud(cfg);
     if (result.success) {
       $('taskListMsg').textContent = '✅ Tasks saved and published to all devices!';
@@ -652,7 +602,6 @@ window.initAdminPage = function () {
     updateExamPreview();
   });
 
-  // PRESETS
   document.querySelectorAll('[data-preset]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const p = btn.dataset.preset;
@@ -778,25 +727,22 @@ window.initAdminPage = function () {
     setTimeout(() => { $('retakeTokenMsg').textContent = ''; }, 2500);
   });
 
-  // STUDENT RESULTS WITH DEDUPLICATION
+  // RESULTS WITH DEDUPLICATION
   async function refreshResultsTable() {
     const body = $('adminResultsTableBody');
     body.innerHTML = '<tr><td colspan="7" class="empty-row">Loading from cloud...</td></tr>';
 
-    // Fetch cloud results
     let cloudResults = [];
     const cloudRes = await fetchResultsFromCloud();
     if (cloudRes.success && Array.isArray(cloudRes.results)) {
       cloudResults = cloudRes.results;
     }
 
-    // Load local results
     let localResults = [];
     try {
       localResults = JSON.parse(localStorage.getItem('exam_history') || '[]');
     } catch (e) { localResults = []; }
 
-    // Merge with deduplication
     const all = [...cloudResults, ...localResults];
     const seen = new Set();
     const unique = [];
@@ -807,7 +753,6 @@ window.initAdminPage = function () {
         String(r.studentName || '').trim().toLowerCase(),
         Math.round(new Date(r.timestamp).getTime() / 2000) || 0
       ].join('|');
-
       if (!seen.has(key)) {
         seen.add(key);
         unique.push(r);
@@ -874,7 +819,6 @@ window.initAdminPage = function () {
     window.open('https://docs.google.com/spreadsheets/d/1PCniBYfuKfVbktsTArc5NiJ8zsKWzACVlRlcNKos0so/edit', '_blank');
   });
 
-  // INIT
   function init() {
     refreshExamStatusUI();
     renderTaskList();
@@ -885,9 +829,7 @@ window.initAdminPage = function () {
     const cfg = getSheetConfig();
     const urlEl = $('systemWebhookUrl');
     if (urlEl) {
-      urlEl.textContent = cfg.url
-        ? (cfg.url.substring(0, 60) + '...')
-        : 'Not configured';
+      urlEl.textContent = cfg.url ? (cfg.url.substring(0, 60) + '...') : 'Not configured';
     }
     const statusEl = $('systemSheetStatus');
     if (statusEl) {
@@ -906,7 +848,7 @@ window.initAdminPage = function () {
 };
 
 /* ============================================================
-   STUDENT PAGE
+   STUDENT PAGE — FIXED
    ============================================================ */
 window.initStudentPage = function () {
   const $ = (id) => document.getElementById(id);
@@ -1284,8 +1226,8 @@ window.initStudentPage = function () {
     let pollTimer = null;
 
     // Track last selected device/tool across tasks
-    window.__lastExamDevice = 'pc';
-    window.__lastExamTool = 'connect';
+    if (typeof window.__lastExamDevice === 'undefined') window.__lastExamDevice = 'pc';
+    if (typeof window.__lastExamTool === 'undefined') window.__lastExamTool = 'connect';
 
     function shuffleArray(arr) {
       const a = arr.slice();
@@ -1335,11 +1277,9 @@ window.initStudentPage = function () {
       const canvas = $(canvasId);
       const cloned = canvas.cloneNode(true);
       canvas.parentNode.replaceChild(cloned, canvas);
-
       const ctx = cloned.getContext('2d');
       cloned.width = 700;
       cloned.height = 380;
-
       return {
         canvas: cloned,
         ctx,
@@ -1435,7 +1375,6 @@ window.initStudentPage = function () {
         const sy = canvas.height / rect.height;
         const x = (e.clientX - rect.left) * sx;
         const y = (e.clientY - rect.top) * sy;
-
         const hit = lab.devices.find((d) => Math.hypot(x - d.x, y - d.y) < 30);
 
         if (lab.tool === 'delete') {
@@ -1490,7 +1429,6 @@ window.initStudentPage = function () {
         const sy = canvas.height / rect.height;
         const x = (e.clientX - rect.left) * sx;
         const y = (e.clientY - rect.top) * sy;
-
         if (lab.dragDeviceId) {
           const d = lab.devices.find((dev) => dev.id === lab.dragDeviceId);
           if (d) {
@@ -1563,14 +1501,14 @@ window.initStudentPage = function () {
     }
 
     // ============================================================
-    // UNIFIED EXAM TOOLBAR — all tools, no duplicates
+    // UNIFIED EXAM TOOLBAR — single clean build, no duplicates
     // ============================================================
     function setupExamLabToolbar(deviceTypes) {
       const allDevices = EXAM_ALL_DEVICES;
 
       // ---- DEVICE BAR ----
       const bar = $('examLabDeviceBar');
-      bar.innerHTML = ''; // Clean rebuild — NO cloning
+      bar.innerHTML = ''; // Clean rebuild
 
       allDevices.forEach((type) => {
         const style = LAB_STYLE[type];
@@ -1599,9 +1537,9 @@ window.initStudentPage = function () {
         const first = bar.querySelector('.pt-device-btn');
         if (first) {
           first.classList.add('selected');
-          const firstType = first.dataset.deviceType;
-          if (currentLab) currentLab.deviceType = firstType;
-          window.__lastExamDevice = firstType;
+          const ft = first.dataset.deviceType;
+          if (currentLab) currentLab.deviceType = ft;
+          window.__lastExamDevice = ft;
         }
       }
 
@@ -1635,7 +1573,6 @@ window.initStudentPage = function () {
         toolsBar.appendChild(btn);
       });
 
-      // Clear button
       const clearBtn = document.createElement('button');
       clearBtn.className = 'tool-btn';
       clearBtn.type = 'button';
@@ -1712,7 +1649,6 @@ window.initStudentPage = function () {
       const assessTab = $('assessTab');
       const isOnAssess = assessTab && assessTab.classList.contains('active');
       if (!isOnAssess) return;
-
       try {
         const res = await syncConfigFromCloud();
         if (res.success && res.config) {
@@ -1907,7 +1843,6 @@ window.initStudentPage = function () {
 
     function loadTask() {
       if (currentLab) cleanupLab(currentLab);
-
       if (currentTaskIdx >= examTasks.length) {
         endExam(false, 'All tasks completed');
         return;
@@ -1934,14 +1869,11 @@ window.initStudentPage = function () {
 
     function loadCrimpTask(t) {
       $('examCrimpUI').style.display = 'flex';
-
       const primaryStd = t.crimpStandard || 'B';
       const otherStd = t.cableType === 'crossover'
         ? (primaryStd === 'A' ? 'B' : 'A')
         : primaryStd;
-
       const cableLabel = t.cableType === 'crossover' ? 'Crossover' : 'Straight-Through';
-
       $('examTaskDesc').innerHTML =
         `<strong>${t.title}</strong> (${t.points} pts)<br>
         <span style="font-size:0.85rem; color:#8ba9bc;">
@@ -1949,7 +1881,6 @@ window.initStudentPage = function () {
           This end: <strong>T568${primaryStd}</strong>
           ${t.cableType === 'crossover' ? ` · Other end: <strong>T568${otherStd}</strong>` : ''}
         </span>`;
-
       slotWires = new Array(8).fill(null);
       selectedSlot = -1;
       selectedPaletteIdx = 0;
@@ -1964,7 +1895,6 @@ window.initStudentPage = function () {
       wp.innerHTML = '';
       const seq = WIRE_STANDARDS[std] || WIRE_STANDARDS.B;
       shuffledPalette = shuffleArray(seq);
-
       shuffledPalette.forEach((wire, idx) => {
         const item = document.createElement('div');
         item.className = 'palette-item';
@@ -2291,12 +2221,9 @@ window.initStudentPage = function () {
     }
 
     function finishTask(t, earned, passed, msg) {
-      // ✅ Clamp earned to never exceed task points
+      // Clamp earned to [0, points]
       earned = Math.max(0, Math.min(earned, t.points));
-      pointsEarned += earned;
-      // ✅ Clamp total earned to never exceed total possible
-      pointsEarned = Math.min(pointsEarned, pointsTotal);
-
+      pointsEarned = Math.min(pointsEarned + earned, pointsTotal);
       taskResults.push({
         id: t.id, type: t.type, title: t.title,
         points: t.points, earned, passed, message: msg
@@ -2345,7 +2272,6 @@ window.initStudentPage = function () {
       $('examActiveScreen').style.display = 'none';
       $('examResultsScreen').style.display = 'flex';
 
-      // ✅ Clamp score to 0-100
       const rawScore = pointsTotal > 0 ? Math.round((pointsEarned / pointsTotal) * 100) : 0;
       const finalScore = Math.max(0, Math.min(100, rawScore));
       const passed = finalScore >= passThreshold;
