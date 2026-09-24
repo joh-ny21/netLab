@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Dashboard — Network Simulator</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="app-container">
+  <div class="app-header">
+    <div class="app-header-left">
+      <h1>⚙️ ADMIN DASHBOARD</h1>
+      <div class="subhead">NETWORK SIMULATOR · CONTROL PANEL</div>
+    </div>
+    <div class="app-header-right">
+      <div class="user-badge">
+        <span class="user-icon">👨‍💼</span>
+        <div class="user-info">
+          <span class="user-name" id="userName">Admin</span>
+          <span class="user-role">Administrator</span>
+        </div>
+      </div>
+      <button class="logout-btn" id="logoutBtn" type="button">Logout</button>
+    </div>
+  </div>
+
+  <div class="admin-layout">
+    <div class="admin-sidebar">
+      <div class="admin-sidebar-section">
+        <div class="admin-sidebar-title">Admin Menu</div>
+        <div class="admin-menu-item active" data-panel="examControl" role="button" tabindex="0">
+          <span class="ami-icon">📝</span> Exam Control
+        </div>
+        <div class="admin-menu-item" data-panel="taskBuilder" role="button" tabindex="0">
+          <span class="ami-icon">🧩</span> Task Builder
+        </div>
+        <div class="admin-menu-item" data-panel="retakeToken" role="button" tabindex="0">
+          <span class="ami-icon">🔑</span> Retake Token
+        </div>
+        <div class="admin-menu-item" data-panel="studentResults" role="button" tabindex="0">
+          <span class="ami-icon">📊</span> Student Results
+        </div>
+        <div class="admin-menu-item" data-panel="systemInfo" role="button" tabindex="0">
+          <span class="ami-icon">ℹ️</span> System Info
+        </div>
+      </div>
+    </div>
+
+    <div class="admin-main">
+      <!-- EXAM CONTROL -->
+      <div class="admin-panel active" id="panelExamControl">
+        <div class="admin-panel-header">
+          <h2>📝 Exam Control</h2>
+          <p>Configure and control the student assessment exam.</p>
+        </div>
+
+        <div class="admin-exam-status-card" id="adminExamStatusCard">
+          <div class="aesc-left">
+            <div class="aesc-icon" id="aescIcon">🔒</div>
+            <div>
+              <div class="aesc-label">Exam Status</div>
+              <div class="aesc-status" id="aescStatus">LOCKED</div>
+              <div class="aesc-sub" id="aescSub">Students cannot take the exam.</div>
+            </div>
+          </div>
+          <div class="aesc-right">
+            <button class="admin-toggle-btn open" id="adminOpenExamBtn" type="button">🔓 OPEN EXAM</button>
+            <button class="admin-toggle-btn close" id="adminCloseExamBtn" type="button" style="display:none;">🔒 CLOSE EXAM</button>
+          </div>
+        </div>
+
+        <div class="admin-config-section">
+          <h3>⚙️ Exam Settings</h3>
+          <div class="admin-config-grid">
+            <div class="admin-config-item">
+              <label>Time Limit (minutes)</label>
+              <input type="number" id="adminTimeLimit" min="1" max="180" value="15">
+            </div>
+            <div class="admin-config-item">
+              <label>Pass Threshold (%)</label>
+              <input type="number" id="adminPassThreshold" min="50" max="100" value="70">
+            </div>
+            <div class="admin-config-item">
+              <label>Max Violations</label>
+              <input type="number" id="adminMaxViolations" min="1" max="10" value="3">
+            </div>
+            <div class="admin-config-item">
+              <label>Shuffle Task Order</label>
+              <select id="adminShuffleTasks">
+                <option value="yes" selected>Yes</option>
+                <option value="no">No</option>
+              </select>
+            </div>
+          </div>
+          <button class="admin-save-btn" id="adminPublishCloudBtn" type="button" style="background:#2f6054; border-bottom-color:#163b32;">
+            ☁️ SAVE & PUBLISH TO ALL DEVICES
+          </button>
+          <div class="admin-config-msg" id="adminConfigMsg"></div>
+        </div>
+
+        <div class="admin-config-section">
+          <h3>📋 Current Exam Summary</h3>
+          <div class="admin-preview-grid">
+            <div class="admin-preview-item">
+              <div class="api-label">Duration</div>
+              <div class="api-value" id="previewTime">15:00</div>
+            </div>
+            <div class="admin-preview-item">
+              <div class="api-label">Total Tasks</div>
+              <div class="api-value" id="previewTasks">0</div>
+            </div>
+            <div class="admin-preview-item">
+              <div class="api-label">Pass %</div>
+              <div class="api-value" id="previewPass">70%</div>
+            </div>
+            <div class="admin-preview-item">
+              <div class="api-label">Violations</div>
+              <div class="api-value" id="previewViolations">3</div>
+            </div>
+          </div>
+          <div class="pt-result" id="examTaskBreakdown" style="margin-top:1rem;">
+            No tasks configured yet. Go to <strong>Task Builder</strong>.
+          </div>
+        </div>
+      </div>
+
+      <!-- TASK BUILDER -->
+      <div class="admin-panel" id="panelTaskBuilder">
+        <div class="admin-panel-header">
+          <h2>🧩 Task Builder</h2>
+          <p>Add tasks to the assessment. Students will complete them in order.</p>
+        </div>
+
+        <div class="admin-config-section">
+          <h3>➕ Add New Task</h3>
+          <div class="admin-config-grid">
+            <div class="admin-config-item">
+              <label>Task Type</label>
+              <select id="taskType">
+                <option value="crimp">🔌 Crimping</option>
+                <option value="topology">🌐 Build a Topology</option>
+                <option value="subnet">🧮 Subnet Calculation</option>
+                <option value="firewall">🛡️ Configure Firewall</option>
+                <option value="ping">📶 Ping Test</option>
+                <option value="loadbalancer">⚖️ Load Balancer</option>
+              </select>
+            </div>
+            <div class="admin-config-item">
+              <label>Points</label>
+              <input type="number" id="taskPoints" min="1" max="100" value="10">
+            </div>
+          </div>
+
+          <!-- CRIMP CONFIG -->
+          <div class="task-config-fields" id="configCrimp">
+            <div class="admin-config-grid">
+              <div class="admin-config-item">
+                <label>Cable Type</label>
+                <select id="crimpCableType">
+                  <option value="straight">Straight-Through</option>
+                  <option value="crossover">Crossover</option>
+                </select>
+              </div>
+              <div class="admin-config-item">
+                <label>Primary Standard (this end)</label>
+                <select id="crimpStandard">
+                  <option value="B" selected>T568B</option>
+                  <option value="A">T568A</option>
+                </select>
+              </div>
+              <div class="admin-config-item">
+                <label>Task Title</label>
+                <input type="text" id="crimpTitle" value="Terminate a Straight-Through Cable">
+              </div>
+            </div>
+            <div class="pt-result" style="margin-top:0.5rem; font-size:0.8rem;">
+              <strong>Reference:</strong>
+              <span id="crimpHint">T568B (this end) → T568B (other end)</span>
+            </div>
+          </div>
+
+          <!-- TOPOLOGY CONFIG -->
+          <div class="task-config-fields" id="configTopology" style="display:none;">
+            <div class="admin-config-grid">
+              <div class="admin-config-item">
+                <label>Target Topology</label>
+                <select id="topoTarget">
+                  <option value="star">⭐ Star</option>
+                  <option value="ring">⭕ Ring</option>
+                  <option value="bus">📏 Bus</option>
+                  <option value="fullmesh">🕸️ Full Mesh</option>
+                  <option value="tree">🌳 Tree</option>
+                  <option value="point">↔️ Point-to-Point</option>
+                </select>
+              </div>
+              <div class="admin-config-item">
+                <label>Minimum Devices</label>
+                <input type="number" id="topoMinDevices" min="2" max="12" value="4">
+              </div>
+              <div class="admin-config-item">
+                <label>Task Title</label>
+                <input type="text" id="topoTitle" value="Build a Star Topology">
+              </div>
+            </div>
+          </div>
+
+          <!-- SUBNET CONFIG -->
+          <div class="task-config-fields" id="configSubnet" style="display:none;">
+            <div class="admin-config-grid">
+              <div class="admin-config-item">
+                <label>Base IP</label>
+                <input type="text" id="subnetIP" value="192.168.1.0">
+              </div>
+              <div class="admin-config-item">
+                <label>CIDR</label>
+                <input type="number" id="subnetCIDR" min="8" max="30" value="24">
+              </div>
+              <div class="admin-config-item">
+                <label>Task Title</label>
+                <input type="text" id="subnetTitle" value="Calculate Subnet Details">
+              </div>
+            </div>
+          </div>
+
+          <!-- FIREWALL CONFIG -->
+          <div class="task-config-fields" id="configFirewall" style="display:none;">
+            <div class="admin-config-grid">
+              <div class="admin-config-item">
+                <label>Required Rule</label>
+                <select id="fwRequiredRule">
+                  <option value="allow-http">Allow HTTP Only</option>
+                  <option value="allow-https">Allow HTTPS Only</option>
+                  <option value="allow-ssh">Allow SSH Only</option>
+                  <option value="deny-all">Deny All</option>
+                  <option value="allow-all">Allow All</option>
+                </select>
+              </div>
+              <div class="admin-config-item">
+                <label>Task Title</label>
+                <input type="text" id="fwTitle" value="Configure Firewall Rule">
+              </div>
+            </div>
+          </div>
+
+          <!-- PING CONFIG -->
+          <div class="task-config-fields" id="configPing" style="display:none;">
+            <div class="admin-config-grid">
+              <div class="admin-config-item">
+                <label>Target</label>
+                <input type="text" id="pingTaskTarget" value="8.8.8.8">
+              </div>
+              <div class="admin-config-item">
+                <label>Task Title</label>
+                <input type="text" id="pingTitle" value="Ping Google DNS">
+              </div>
+            </div>
+          </div>
+
+          <!-- LB CONFIG -->
+          <div class="task-config-fields" id="configLB" style="display:none;">
+            <div class="admin-config-grid">
+              <div class="admin-config-item">
+                <label>Required Algorithm</label>
+                <select id="lbRequiredAlgo">
+                  <option value="round-robin">Round Robin</option>
+                  <option value="least-connections">Least Connections</option>
+                  <option value="weighted">Weighted</option>
+                </select>
+              </div>
+              <div class="admin-config-item">
+                <label>Min Servers</label>
+                <input type="number" id="lbMinServers" min="1" max="10" value="2">
+              </div>
+              <div class="admin-config-item">
+                <label>Task Title</label>
+                <input type="text" id="lbTitle" value="Set Up Load Balancer">
+              </div>
+            </div>
+          </div>
+
+          <button class="admin-save-btn" id="adminAddTaskBtn" type="button" style="margin-top:1rem;">➕ ADD TASK</button>
+          <div class="admin-config-msg" id="taskBuilderMsg"></div>
+        </div>
+
+        <div class="admin-config-section">
+          <h3>📝 Current Assessment Tasks</h3>
+          <div id="taskList" class="task-list">
+            <div class="empty-row">No tasks yet. Add one above.</div>
+          </div>
+          <div style="display:flex; gap:10px; margin-top:1rem; flex-wrap:wrap;">
+            <button class="admin-action-btn" id="adminSaveTasksBtn" type="button" style="flex:1;">💾 SAVE & PUBLISH TO ALL DEVICES</button>
+            <button class="admin-action-btn danger" id="adminClearTasksBtn" type="button" style="flex:1;">🗑️ CLEAR ALL TASKS</button>
+          </div>
+          <div class="admin-config-msg" id="taskListMsg"></div>
+        </div>
+
+        <div class="admin-config-section">
+          <h3>📦 Quick Presets</h3>
+          <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <button class="admin-action-btn" data-preset="basic" type="button">📗 Basic Crimping (B only)</button>
+            <button class="admin-action-btn" data-preset="mixed" type="button">📙 Mixed A/B Exam</button>
+            <button class="admin-action-btn" data-preset="network" type="button">📘 Network Fundamentals</button>
+            <button class="admin-action-btn" data-preset="advanced" type="button">📕 Advanced Network Admin</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- RETAKE TOKEN -->
+      <div class="admin-panel" id="panelRetakeToken">
+        <div class="admin-panel-header">
+          <h2>🔑 Retake Token</h2>
+          <p>Students must enter a valid token to retake the exam.</p>
+        </div>
+
+        <div class="admin-config-section">
+          <h3>🎫 Current Token</h3>
+          <div class="admin-config-item" style="margin-bottom:1rem;">
+            <label>Token Value</label>
+            <input type="text" id="adminRetakeToken" readonly placeholder="No active token"
+              style="font-family: monospace; letter-spacing: 3px; text-align: center; font-size: 1.2rem; padding: 16px; background: #0a141b;">
+          </div>
+          <div class="admin-config-grid">
+            <div class="admin-config-item">
+              <label>Status</label>
+              <input type="text" id="adminTokenStatus" readonly style="font-weight: 700;">
+            </div>
+            <div class="admin-config-item">
+              <label>Expires</label>
+              <input type="text" id="adminTokenExpiry" readonly>
+            </div>
+          </div>
+          <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:1rem;">
+            <button class="admin-action-btn" id="adminGenerateToken" type="button" style="flex:1;">🎲 GENERATE NEW TOKEN</button>
+            <button class="admin-action-btn" id="adminCopyToken" type="button" style="flex:1;">📋 COPY TOKEN</button>
+          </div>
+          <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px;">
+            <button class="admin-action-btn danger" id="adminRevokeToken" type="button" style="flex:1;">🚫 REVOKE TOKEN</button>
+          </div>
+          <div class="admin-config-msg" id="retakeTokenMsg"></div>
+        </div>
+      </div>
+
+      <!-- STUDENT RESULTS -->
+      <div class="admin-panel" id="panelStudentResults">
+        <div class="admin-panel-header">
+          <h2>📊 Student Results</h2>
+          <p id="resultsHeaderSub">View assessment results submitted by students (from cloud).</p>
+        </div>
+
+        <div class="admin-results-actions">
+          <button class="admin-action-btn" id="adminRefreshResults" type="button">🔄 Refresh from Cloud</button>
+          <button class="admin-action-btn" id="adminOpenSheet" type="button">📗 Open Google Sheet</button>
+        </div>
+
+        <div class="admin-results-summary">
+          <div class="admin-summary-item">
+            <div class="asi-value" id="adminTotalAttempts">0</div>
+            <div class="asi-label">Total Attempts</div>
+          </div>
+          <div class="admin-summary-item pass">
+            <div class="asi-value" id="adminTotalPassed">0</div>
+            <div class="asi-label">Passed</div>
+          </div>
+          <div class="admin-summary-item fail">
+            <div class="asi-value" id="adminTotalFailed">0</div>
+            <div class="asi-label">Failed</div>
+          </div>
+          <div class="admin-summary-item">
+            <div class="asi-value" id="adminAvgScore">—</div>
+            <div class="asi-label">Avg Score</div>
+          </div>
+        </div>
+
+        <div class="admin-results-table-wrapper">
+          <table class="admin-results-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Student</th>
+                <th>ID</th>
+                <th>Score</th>
+                <th>Result</th>
+                <th>Violations</th>
+                <th>Date</th>
+              </tr>
+            </thead>
+            <tbody id="adminResultsTableBody">
+              <tr><td colspan="7" class="empty-row">Click "Refresh from Cloud" to load.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- SYSTEM INFO -->
+      <div class="admin-panel" id="panelSystemInfo">
+        <div class="admin-panel-header">
+          <h2>ℹ️ System Info</h2>
+          <p>System status and configuration overview.</p>
+        </div>
+
+        <div class="admin-info-grid">
+          <div class="admin-info-card">
+            <div class="aic-icon">📝</div>
+            <div class="aic-title">Exam Mode</div>
+            <div class="aic-value" id="systemExamMode">Locked</div>
+          </div>
+          <div class="admin-info-card">
+            <div class="aic-icon">☁️</div>
+            <div class="aic-title">Cloud Sync</div>
+            <div class="aic-value" id="systemSheetStatus">Checking...</div>
+          </div>
+          <div class="admin-info-card">
+            <div class="aic-icon">📊</div>
+            <div class="aic-title">Exam Attempts</div>
+            <div class="aic-value" id="systemAttempts">0</div>
+          </div>
+          <div class="admin-info-card">
+            <div class="aic-icon">🔐</div>
+            <div class="aic-title">Anti-Cheat</div>
+            <div class="aic-value">Enabled</div>
+          </div>
+        </div>
+
+        <div class="admin-config-section">
+          <h3>🔗 Backend</h3>
+          <p style="color:#8ba9bc; font-size:0.85rem; word-break:break-all;">
+            Web App URL: <strong id="systemWebhookUrl" style="color:#b8e8ff;">—</strong>
+          </p>
+        </div>
+
+        <div class="admin-config-section">
+          <h3>🔑 Admin Credentials</h3>
+          <p style="color:#8ba9bc; font-size:0.85rem;">Default password: <strong style="color:#ffd966;">admin123</strong></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="script.js"></script>
+<script>
+  (async function() {
+    const raw = localStorage.getItem('current_user');
+    let user = null;
+    try { user = JSON.parse(raw); } catch(e) { user = null; }
+
+    if (!user || !user.role) {
+      localStorage.removeItem('current_user');
+      window.location.replace('index.html');
+      return;
+    }
+    if (user.role === 'student') {
+      window.location.replace('student.html');
+      return;
+    }
+
+    document.getElementById('userName').textContent = user.name || 'Admin';
+
+    try {
+      if (typeof syncConfigFromCloud === 'function') {
+        await syncConfigFromCloud();
+      }
+    } catch (err) {
+      console.warn('Cloud sync failed:', err);
+    }
+
+    if (window.initAdminPage) window.initAdminPage();
+  })();
+</script>
+
+</body>
+</html>
