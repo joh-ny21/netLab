@@ -13,7 +13,7 @@ const ADMIN_PASSWORD = 'admin123';
 // ============================================================
 // ⚙️ HARDCODED BACKEND — PASTE YOUR APPS SCRIPT URL HERE
 // ============================================================
-const HARDCODED_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbwvFB14mx0IELTTzCYmNlaXId7MPO-Ali46DGw5tU-Ldslgrozm0Uv22oBOs0h4Yq-7Tw/exec';
+const HARDCODED_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycby6oSrl8irimgOpLK4nCJQ27E_GopCmsFCbNYaqaWgQy3rFVeiBq-M0wlxOk0JkJ0BDIg/exec';
 const HARDCODED_TOKEN = 'QWER-1234-ASDF-5678';
 
 // ============================================================
