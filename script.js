@@ -4,6 +4,7 @@
    Clean canvas handling to prevent tool glitches
    Reliable Google Sheets recording
    Full T568A and T568B support
+   Accurate scoring with deduplication
    ============================================================ */
 
 const ADMIN_PASSWORD = 'admin123';
@@ -11,8 +12,8 @@ const ADMIN_PASSWORD = 'admin123';
 // ============================================================
 // ⚙️ HARDCODED BACKEND — PASTE YOUR APPS SCRIPT URL HERE
 // ============================================================
-const HARDCODED_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbwE6eIQMIzeqXLCnLo2oEWLGAwWrW_yj5Q9F4nNQu0Ep_JP0I4uCs2FH3i6ussUqQM9JA/exec';
-const HARDCODED_TOKEN = '123-456-789';
+const HARDCODED_WEBHOOK_URL = 'PASTE_YOUR_APPS_SCRIPT_URL_HERE';
+const HARDCODED_TOKEN = '';
 
 // ============================================================
 // WIRING STANDARDS
@@ -242,7 +243,7 @@ async function submitToGoogleSheet(record) {
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify(fallbackPayload)
     });
-    console.log('✅ Result sent via POST fallback (unverified)');
+    console.log('✅ Result sent via POST fallback');
     return { success: true, fallback: true };
   } catch (err2) {
     return { success: false, error: err2.toString() };
@@ -515,7 +516,6 @@ window.initAdminPage = function () {
   taskType.addEventListener('change', () => showConfigFields(taskType.value));
   showConfigFields(taskType.value);
 
-  // Update crimp hint dynamically
   function updateCrimpHint() {
     const cableEl = $('crimpCableType');
     const stdEl = $('crimpStandard');
@@ -778,26 +778,50 @@ window.initAdminPage = function () {
     setTimeout(() => { $('retakeTokenMsg').textContent = ''; }, 2500);
   });
 
-  // STUDENT RESULTS
+  // STUDENT RESULTS WITH DEDUPLICATION
   async function refreshResultsTable() {
     const body = $('adminResultsTableBody');
     body.innerHTML = '<tr><td colspan="7" class="empty-row">Loading from cloud...</td></tr>';
 
-    let results = [];
+    // Fetch cloud results
+    let cloudResults = [];
     const cloudRes = await fetchResultsFromCloud();
-
-    if (cloudRes.success && cloudRes.results.length > 0) {
-      results = cloudRes.results;
-    } else {
-      try {
-        results = JSON.parse(localStorage.getItem('exam_history') || '[]');
-      } catch (e) { results = []; }
+    if (cloudRes.success && Array.isArray(cloudRes.results)) {
+      cloudResults = cloudRes.results;
     }
 
-    const total = results.length;
-    const passed = results.filter((h) => h.passed).length;
+    // Load local results
+    let localResults = [];
+    try {
+      localResults = JSON.parse(localStorage.getItem('exam_history') || '[]');
+    } catch (e) { localResults = []; }
+
+    // Merge with deduplication
+    const all = [...cloudResults, ...localResults];
+    const seen = new Set();
+    const unique = [];
+
+    all.forEach((r) => {
+      const key = [
+        String(r.studentId || '').trim().toLowerCase(),
+        String(r.studentName || '').trim().toLowerCase(),
+        Math.round(new Date(r.timestamp).getTime() / 2000) || 0
+      ].join('|');
+
+      if (!seen.has(key)) {
+        seen.add(key);
+        unique.push(r);
+      }
+    });
+
+    unique.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+    const total = unique.length;
+    const passed = unique.filter((h) => h.passed).length;
     const failed = total - passed;
-    const avgScore = total > 0 ? Math.round(results.reduce((a, h) => a + (h.score || 0), 0) / total) : 0;
+    const avgScore = total > 0
+      ? Math.round(unique.reduce((a, h) => a + (Number(h.score) || 0), 0) / total)
+      : 0;
 
     $('adminTotalAttempts').textContent = total;
     $('adminTotalPassed').textContent = passed;
@@ -805,13 +829,23 @@ window.initAdminPage = function () {
     $('adminAvgScore').textContent = total > 0 ? avgScore + '%' : '—';
     $('systemAttempts').textContent = total;
 
+    const duplicatesRemoved = all.length - unique.length;
+    const resultsHeader = $('resultsHeaderSub');
+    if (resultsHeader) {
+      if (duplicatesRemoved > 0) {
+        resultsHeader.innerHTML = `View assessment results · <span style="color:#ffd966;">${duplicatesRemoved} duplicate(s) filtered out</span>`;
+      } else {
+        resultsHeader.textContent = 'View assessment results submitted by students (from cloud).';
+      }
+    }
+
     if (total === 0) {
       body.innerHTML = '<tr><td colspan="7" class="empty-row">No exam results yet.</td></tr>';
       return;
     }
 
     body.innerHTML = '';
-    results.slice().reverse().forEach((h, idx) => {
+    unique.forEach((h, idx) => {
       const date = new Date(h.timestamp);
       const dateStr = isNaN(date.getTime()) ? '—'
         : date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -911,7 +945,7 @@ window.initStudentPage = function () {
   // ==================== CRIMPING PRACTICE ====================
   (function () {
     let cableType = 'straight';
-    let practiceStd = 'B'; // Default practice standard
+    let practiceStd = 'B';
     let shuffledPalette = [];
     let slotWires = new Array(8).fill(null);
     let selectedSlot = -1;
@@ -920,9 +954,7 @@ window.initStudentPage = function () {
     let stats = JSON.parse(localStorage.getItem('crimp_stats_v2') ||
       '{"attempts":0,"passed":0,"failed":0,"scores":[]}');
 
-    function getCurrentSequence() {
-      return WIRE_STANDARDS[practiceStd];
-    }
+    function getCurrentSequence() { return WIRE_STANDARDS[practiceStd]; }
 
     function shuffleArray(arr) {
       const a = arr.slice();
@@ -1250,7 +1282,10 @@ window.initStudentPage = function () {
     let currentLab = null;
     let lastConfigHash = '';
     let pollTimer = null;
-    let currentCrimpStandard = 'B';
+
+    // Track last selected device/tool across tasks
+    window.__lastExamDevice = 'pc';
+    window.__lastExamTool = 'connect';
 
     function shuffleArray(arr) {
       const a = arr.slice();
@@ -1293,6 +1328,9 @@ window.initStudentPage = function () {
       internet: { icon: '🌍', color: '#2a6a9a', label: 'Internet' }
     };
 
+    // All devices always available in every lab task
+    const EXAM_ALL_DEVICES = ['pc', 'server', 'switch', 'router', 'firewall', 'lb', 'internet'];
+
     function createLab(canvasId, deviceTypes) {
       const canvas = $(canvasId);
       const cloned = canvas.cloneNode(true);
@@ -1307,8 +1345,8 @@ window.initStudentPage = function () {
         ctx,
         devices: [],
         connections: [],
-        tool: 'connect',
-        deviceType: deviceTypes[0] || 'pc',
+        tool: window.__lastExamTool || 'connect',
+        deviceType: window.__lastExamDevice || 'pc',
         dragDeviceId: null,
         dragOffsetX: 0,
         dragOffsetY: 0,
@@ -1524,59 +1562,95 @@ window.initStudentPage = function () {
       return 'hybrid';
     }
 
+    // ============================================================
+    // UNIFIED EXAM TOOLBAR — all tools, no duplicates
+    // ============================================================
     function setupExamLabToolbar(deviceTypes) {
-      const bar = $('examLabDeviceBar');
-      const cloned = bar.cloneNode(true);
-      bar.parentNode.replaceChild(cloned, bar);
+      const allDevices = EXAM_ALL_DEVICES;
 
-      deviceTypes.forEach((type, i) => {
+      // ---- DEVICE BAR ----
+      const bar = $('examLabDeviceBar');
+      bar.innerHTML = ''; // Clean rebuild — NO cloning
+
+      allDevices.forEach((type) => {
         const style = LAB_STYLE[type];
         if (!style) return;
+
+        const isSelected = currentLab && currentLab.deviceType === type;
         const btn = document.createElement('button');
-        btn.className = 'pt-device-btn' + (i === 0 ? ' selected' : '');
+        btn.className = 'pt-device-btn' + (isSelected ? ' selected' : '');
         btn.type = 'button';
+        btn.dataset.deviceType = type;
         btn.innerHTML = `<span class="icon">${style.icon}</span> ${style.label}`;
+
         btn.addEventListener('click', (e) => {
           e.preventDefault();
           e.stopPropagation();
-          cloned.querySelectorAll('.pt-device-btn').forEach((b) => b.classList.remove('selected'));
+          bar.querySelectorAll('.pt-device-btn').forEach((b) => b.classList.remove('selected'));
           btn.classList.add('selected');
           if (currentLab) currentLab.deviceType = type;
+          window.__lastExamDevice = type;
         });
-        cloned.appendChild(btn);
+
+        bar.appendChild(btn);
       });
 
-      const toolsBar = $('examLabToolsBar');
-      if (toolsBar) {
-        const toolsClone = toolsBar.cloneNode(true);
-        toolsBar.parentNode.replaceChild(toolsClone, toolsBar);
-
-        toolsClone.querySelectorAll('.tool-btn[data-exam-tool]').forEach((btn) => {
-          const toolName = btn.dataset.examTool;
-          btn.classList.toggle('active', toolName === 'connect');
-          btn.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            toolsClone.querySelectorAll('.tool-btn[data-exam-tool]').forEach((b) => b.classList.remove('active'));
-            btn.classList.add('active');
-            if (currentLab) currentLab.tool = toolName;
-          });
-        });
-
-        const clearBtn = toolsClone.querySelector('#examLabClear');
-        if (clearBtn) {
-          clearBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            if (!currentLab) return;
-            currentLab.devices = [];
-            currentLab.connections = [];
-            currentLab.connectSourceId = null;
-            currentLab.dragDeviceId = null;
-            labDraw(currentLab);
-          });
+      if (!bar.querySelector('.pt-device-btn.selected')) {
+        const first = bar.querySelector('.pt-device-btn');
+        if (first) {
+          first.classList.add('selected');
+          const firstType = first.dataset.deviceType;
+          if (currentLab) currentLab.deviceType = firstType;
+          window.__lastExamDevice = firstType;
         }
       }
+
+      // ---- TOOLS BAR ----
+      const toolsBar = $('examLabToolsBar');
+      toolsBar.innerHTML = ''; // Clean rebuild
+
+      const tools = [
+        { id: 'connect', icon: '🔗', label: 'Connect' },
+        { id: 'select', icon: '🖱️', label: 'Select' },
+        { id: 'delete', icon: '🗑️', label: 'Delete' }
+      ];
+
+      tools.forEach((tool) => {
+        const isActive = currentLab ? currentLab.tool === tool.id : tool.id === 'connect';
+        const btn = document.createElement('button');
+        btn.className = 'tool-btn' + (isActive ? ' active' : '');
+        btn.type = 'button';
+        btn.dataset.examTool = tool.id;
+        btn.innerHTML = `${tool.icon} ${tool.label}`;
+
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          toolsBar.querySelectorAll('.tool-btn').forEach((b) => b.classList.remove('active'));
+          btn.classList.add('active');
+          if (currentLab) currentLab.tool = tool.id;
+          window.__lastExamTool = tool.id;
+        });
+
+        toolsBar.appendChild(btn);
+      });
+
+      // Clear button
+      const clearBtn = document.createElement('button');
+      clearBtn.className = 'tool-btn';
+      clearBtn.type = 'button';
+      clearBtn.innerHTML = '⟲ Clear';
+      clearBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!currentLab) return;
+        currentLab.devices = [];
+        currentLab.connections = [];
+        currentLab.connectSourceId = null;
+        currentLab.dragDeviceId = null;
+        labDraw(currentLab);
+      });
+      toolsBar.appendChild(clearBtn);
     }
 
     // ============ EXAM SCREEN ============
@@ -1866,8 +1940,6 @@ window.initStudentPage = function () {
         ? (primaryStd === 'A' ? 'B' : 'A')
         : primaryStd;
 
-      currentCrimpStandard = primaryStd;
-
       const cableLabel = t.cableType === 'crossover' ? 'Crossover' : 'Straight-Through';
 
       $('examTaskDesc').innerHTML =
@@ -1999,25 +2071,17 @@ window.initStudentPage = function () {
         $('examStatusMsg').className = 'exam-status-area error';
         return;
       }
-
       const primaryStd = t.crimpStandard || 'B';
       const expectedSeq = WIRE_STANDARDS[primaryStd] || WIRE_STANDARDS.B;
-
       let correct = 0;
       for (let i = 0; i < 8; i++) {
         if (slotWires[i] && slotWires[i].name === expectedSeq[i].name) correct++;
       }
-
       const allCorrect = correct === 8;
       const earned = allCorrect ? t.points : Math.round((correct / 8) * t.points);
       const stdLabel = `T568${primaryStd}`;
-
-      finishTask(
-        t,
-        earned,
-        allCorrect,
-        allCorrect ? `Perfect! Wired correctly as ${stdLabel}` : `${correct}/8 wires match ${stdLabel}`
-      );
+      finishTask(t, earned, allCorrect,
+        allCorrect ? `Perfect! Wired correctly as ${stdLabel}` : `${correct}/8 wires match ${stdLabel}`);
     }
 
     function loadTopoTask(t) {
@@ -2027,7 +2091,7 @@ window.initStudentPage = function () {
         <span style="font-size:0.85rem; color:#8ba9bc;">
           Target: <strong>${t.targetTopology.toUpperCase()}</strong> · Min devices: <strong>${t.minDevices}</strong>
         </span>`;
-      currentLab = createLab('examTopoCanvas', ['pc', 'switch', 'router', 'server', 'firewall', 'lb', 'internet']);
+      currentLab = createLab('examTopoCanvas', EXAM_ALL_DEVICES);
       labAttach(currentLab);
       setupExamLabToolbar(currentLab.deviceTypes);
       setTimeout(() => labDraw(currentLab), 50);
@@ -2093,7 +2157,7 @@ window.initStudentPage = function () {
         <span style="font-size:0.85rem; color:#8ba9bc;">
           Required rule: <strong>${t.requiredRule}</strong>
         </span>`;
-      currentLab = createLab('examTopoCanvas', ['pc', 'firewall', 'server', 'internet']);
+      currentLab = createLab('examTopoCanvas', EXAM_ALL_DEVICES);
       labAttach(currentLab);
       setupExamLabToolbar(currentLab.deviceTypes);
       setTimeout(() => labDraw(currentLab), 50);
@@ -2122,7 +2186,7 @@ window.initStudentPage = function () {
       $('examPingTarget').textContent = `Target: ${t.target}`;
       $('examPingOutput').textContent = 'Build the topology, then click Run Ping.';
       $('examPingOutput').className = 'pt-result';
-      currentLab = createLab('examTopoCanvas', ['pc', 'router', 'internet']);
+      currentLab = createLab('examTopoCanvas', EXAM_ALL_DEVICES);
       labAttach(currentLab);
       setupExamLabToolbar(currentLab.deviceTypes);
 
@@ -2179,7 +2243,7 @@ window.initStudentPage = function () {
         <span style="font-size:0.85rem; color:#8ba9bc;">
           Algorithm: <strong>${t.requiredAlgo}</strong> · Min servers: <strong>${t.minServers}</strong>
         </span>`;
-      currentLab = createLab('examTopoCanvas', ['pc', 'lb', 'server']);
+      currentLab = createLab('examTopoCanvas', EXAM_ALL_DEVICES);
       labAttach(currentLab);
       setupExamLabToolbar(currentLab.deviceTypes);
 
@@ -2227,7 +2291,12 @@ window.initStudentPage = function () {
     }
 
     function finishTask(t, earned, passed, msg) {
+      // ✅ Clamp earned to never exceed task points
+      earned = Math.max(0, Math.min(earned, t.points));
       pointsEarned += earned;
+      // ✅ Clamp total earned to never exceed total possible
+      pointsEarned = Math.min(pointsEarned, pointsTotal);
+
       taskResults.push({
         id: t.id, type: t.type, title: t.title,
         points: t.points, earned, passed, message: msg
@@ -2276,7 +2345,9 @@ window.initStudentPage = function () {
       $('examActiveScreen').style.display = 'none';
       $('examResultsScreen').style.display = 'flex';
 
-      const finalScore = pointsTotal > 0 ? Math.round((pointsEarned / pointsTotal) * 100) : 0;
+      // ✅ Clamp score to 0-100
+      const rawScore = pointsTotal > 0 ? Math.round((pointsEarned / pointsTotal) * 100) : 0;
+      const finalScore = Math.max(0, Math.min(100, rawScore));
       const passed = finalScore >= passThreshold;
 
       let grade = 'F';
