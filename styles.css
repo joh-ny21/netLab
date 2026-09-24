@@ -1,3 +1,7 @@
+/* ============================================================
+   NETWORK SIMULATOR — COMPLETE STYLESHEET
+   ============================================================ */
+
 * {
   box-sizing: border-box;
   font-family: system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
@@ -218,7 +222,6 @@ h1 {
 .stat-card .stat-label { font-size: 0.65rem; color: #7a9bb0; text-transform: uppercase; letter-spacing: 1.5px; margin-top: 4px; }
 .stat-card.pass .stat-value { color: #6ee7a0; }
 .stat-card.fail .stat-value { color: #ff8888; }
-
 .main-panel { display: flex; flex-wrap: wrap; gap: 1.5rem; justify-content: center; }
 
 /* RJ45 */
@@ -1335,6 +1338,8 @@ canvas#topoCanvas {
   cursor: pointer;
 }
 .task-item .ti-remove:hover { background: #8a4a4a; }
+
+/* RESPONSIVE */
 @media (max-width: 900px) {
   .admin-layout { flex-direction: column; }
   .admin-sidebar { flex: 1 1 auto; }
